@@ -1,4 +1,4 @@
-const db = require('../firebase');
+const {db} = require('../firebase');
 const Service = require('../models/service.model');
 const serviceSchema = require('../validators/service.validator');
 const collection = db.collection('services');
