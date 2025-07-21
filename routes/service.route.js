@@ -6,7 +6,7 @@ const {
   deleteService,
   updateService,
 } = require("../controllers/service.controller");
-const verifyFirebaseToken = require("../utils/middleware/auth.middleware");
+const { verifyFirebaseToken } = require("../utils/middleware/auth.middleware");
 const router = express.Router();
 
 router.post("/",verifyFirebaseToken, createService);
