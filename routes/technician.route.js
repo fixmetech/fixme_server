@@ -7,7 +7,8 @@ const {
   getTechnicianById,
   updateTechnicianStatus,
   getTechnicianStatus,
-  loginTechnician
+  loginTechnician,
+  testEndpoint
 } = require('../controllers/technician.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
@@ -29,6 +30,9 @@ router.patch('/:id/status', updateTechnicianStatus);
 // Get registration status by email (for technician app)
 router.get('/status/:email', getTechnicianStatus);
 
+// Test endpoint
+router.get('/test', testEndpoint);
+
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
@@ -48,7 +52,7 @@ router.use((error, req, res, next) => {
   
   if (error.message.includes('Profile picture must be') || 
       error.message.includes('ID proof must be') || 
-      error.message.includes('Certificates must be')) {
+      error.message.includes('Verification documents must be')) {
     return res.status(400).json({
       success: false,
       error: error.message
