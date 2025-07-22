@@ -19,17 +19,20 @@ const fileFilter = (req, file, cb) => {
     } else {
       cb(new Error('Profile picture must be JPEG, JPG, or PNG'), false);
     }
-  } else if (file.fieldname === 'idProof') {
+  } else if (file.fieldname === 'idProof' || file.fieldname === 'idProofBack') {
     if (allowedTypes.document.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error('ID proof must be PDF, JPEG, JPG, or PNG'), false);
     }
-  } else if (file.fieldname === 'certificates') {
+  } else if (file.fieldname === 'certificates' || 
+             file.fieldname === 'workPhotos' || 
+             file.fieldname === 'recommendationLetters' || 
+             file.fieldname === 'clientReviews') {
     if (allowedTypes.document.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Certificates must be PDF, JPEG, JPG, or PNG'), false);
+      cb(new Error('Verification documents must be PDF, JPEG, JPG, or PNG'), false);
     }
   } else {
     cb(new Error('Invalid field name'), false);
@@ -42,7 +45,7 @@ const upload = multer({
   fileFilter: fileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
-    files: 10 // Maximum 10 files total (1 profile + 1 ID + 8 certificates)
+    files: 20 // Maximum 20 files total to accommodate all verification documents
   }
 });
 
@@ -50,7 +53,11 @@ const upload = multer({
 const uploadTechnicianFiles = upload.fields([
   { name: 'profilePicture', maxCount: 1 },
   { name: 'idProof', maxCount: 1 },
-  { name: 'certificates', maxCount: 8 } // Allow multiple certificates (up to 8)
+  { name: 'idProofBack', maxCount: 1 },
+  { name: 'certificates', maxCount: 5 },
+  { name: 'workPhotos', maxCount: 5 },
+  { name: 'recommendationLetters', maxCount: 3 },
+  { name: 'clientReviews', maxCount: 5 }
 ]);
 
 // Function to upload file to Firebase Storage

@@ -21,6 +21,18 @@ const technicianRegistrationSchema = Joi.object({
     'string.empty': 'Password is required',
     'string.min': 'Password must be at least 6 characters'
   }),
+
+  dateOfBirth: Joi.date().optional().messages({
+    'date.base': 'Please provide a valid date of birth'
+  }),
+
+  gender: Joi.string().valid('Male', 'Female', 'Other').optional().messages({
+    'any.only': 'Gender must be Male, Female, or Other'
+  }),
+
+  nicNumber: Joi.string().pattern(/^[0-9]{9}[vVxX]$|^[0-9]{12}$/).optional().messages({
+    'string.pattern.base': 'Enter a valid Sri Lankan NIC number'
+  }),
   
   serviceCategory: Joi.string().valid('Vehicle Services', 'Home Services').required().messages({
     'any.only': 'Service category must be either Vehicle Services or Home Services',
@@ -47,6 +59,20 @@ const technicianRegistrationSchema = Joi.object({
   serviceRadius: Joi.number().min(1).max(100).optional().default(15).messages({
     'number.min': 'Service radius must be at least 1 km',
     'number.max': 'Service radius cannot exceed 100 km'
+  }),
+
+  verificationType: Joi.string().valid('Certificate Verification', 'Experience Verification', 'Newbie Application').optional().messages({
+    'any.only': 'Verification type must be Certificate Verification, Experience Verification, or Newbie Application'
+  }),
+
+  applicationReason: Joi.string().min(50).max(1000).when('verificationType', {
+    is: 'Newbie Application',
+    then: Joi.required(),
+    otherwise: Joi.optional()
+  }).messages({
+    'string.min': 'Application reason must be at least 50 characters',
+    'string.max': 'Application reason must not exceed 1000 characters',
+    'any.required': 'Application reason is required for newbie applications'
   }),
   
   bankName: Joi.string().required().messages({
