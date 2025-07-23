@@ -10,6 +10,204 @@ const { v4: uuidv4 } = require("uuid");
 
 const usersCollection = db.collection("users");
 
+// Get all homes for a customer
+const getHomes = async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Customer ID is required"
+      });
+    }
+
+    // Check if customer exists
+    const customerDoc = await usersCollection.doc(customerId).get();
+    if (!customerDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Customer not found"
+      });
+    }
+
+    const customerData = customerDoc.data();
+    const homes = customerData.homes || [];
+
+    return res.status(200).json({
+      success: true,
+      message: "Homes retrieved successfully",
+      data: {
+        customerId: customerId,
+        homes: homes,
+        count: homes.length
+      }
+    });
+
+  } catch (error) {
+    console.error("Error retrieving homes:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error while retrieving homes"
+    });
+  }
+};
+
+// Get all vehicles for a customer
+const getVehicles = async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Customer ID is required"
+      });
+    }
+
+    // Check if customer exists
+    const customerDoc = await usersCollection.doc(customerId).get();
+    if (!customerDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Customer not found"
+      });
+    }
+
+    const customerData = customerDoc.data();
+    const vehicles = customerData.vehicles || [];
+
+    return res.status(200).json({
+      success: true,
+      message: "Vehicles retrieved successfully",
+      data: {
+        customerId: customerId,
+        vehicles: vehicles,
+        count: vehicles.length
+      }
+    });
+
+  } catch (error) {
+    console.error("Error retrieving vehicles:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error while retrieving vehicles"
+    });
+  }
+};
+
+// Get specific home by ID
+const getHomeById = async (req, res) => {
+  try {
+    const { id } = req.params; // Home ID
+    const { customerId } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: "Home ID is required"
+      });
+    }
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Customer ID is required"
+      });
+    }
+
+    // Check if customer exists
+    const customerDoc = await usersCollection.doc(customerId).get();
+    if (!customerDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Customer not found"
+      });
+    }
+
+    const customerData = customerDoc.data();
+    const homes = customerData.homes || [];
+
+    // Find the specific home
+    const home = homes.find(home => home.id === id);
+    if (!home) {
+      return res.status(404).json({
+        success: false,
+        error: "Home not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Home retrieved successfully",
+      data: home
+    });
+
+  } catch (error) {
+    console.error("Error retrieving home:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error while retrieving home"
+    });
+  }
+};
+
+// Get specific vehicle by ID
+const getVehicleById = async (req, res) => {
+  try {
+    const { id } = req.params; // Vehicle ID
+    const { customerId } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: "Vehicle ID is required"
+      });
+    }
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Customer ID is required"
+      });
+    }
+
+    // Check if customer exists
+    const customerDoc = await usersCollection.doc(customerId).get();
+    if (!customerDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Customer not found"
+      });
+    }
+
+    const customerData = customerDoc.data();
+    const vehicles = customerData.vehicles || [];
+
+    // Find the specific vehicle
+    const vehicle = vehicles.find(vehicle => vehicle.id === id);
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        error: "Vehicle not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle retrieved successfully",
+      data: vehicle
+    });
+
+  } catch (error) {
+    console.error("Error retrieving vehicle:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error while retrieving vehicle"
+    });
+  }
+};
+
 // Add new home
 const addNewHome = async (req, res) => {
   try {
@@ -425,6 +623,10 @@ const RemoveProperty = async (req, res) => {
 };
 
 module.exports = {
+  getHomes,
+  getVehicles,
+  getHomeById,
+  getVehicleById,
   addNewHome,
   addNewVehicle,
   EditHome,
