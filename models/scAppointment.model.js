@@ -1,17 +1,17 @@
 class scAppointment {
     constructor({
       customerName,
-      service, // can be service ID or name
+      servicecenterid, 
       phoneNumber,
       date,
       time,
-      duration, // in minutes or format like "1h"
+      duration, 
       email,
-      status, // e.g., "pending", "confirmed", "completed"
+      status, 
       notes = ''
     }) {
       this.customerName = customerName;
-      this.service = service;
+      this.servicecenterid = servicecenterid;
       this.phoneNumber = phoneNumber;
       this.date = date;
       this.time = time;
