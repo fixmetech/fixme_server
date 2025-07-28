@@ -1,18 +1,24 @@
 class scService {
     constructor({
-      name,
-      category,
+      serviceName,
+      serviceCategory,
+      servicecenterid,
       description,
+      duration,
       price,
       tags = [],
-      image
+      image,
+      updatedAt
     }) {
-      this.name = name;
-      this.category = category;
+      this.serviceName = serviceName;
+      this.servicecenterid = servicecenterid;
+      this.serviceCategory = serviceCategory;
       this.description = description;
+      this.duration = duration;
       this.price = price;
-      this.tags = tags; // Array of strings
-      this.image = image; // URL or file name
+      this.tags = tags; 
+      this.image = image; 
+      this.updatedAt = updatedAt;
     }
   }
   
