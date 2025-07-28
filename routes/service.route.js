@@ -16,34 +16,42 @@ const {
   editService,
   deleteService,
   viewAllServices,
-  viewServiceById
-
+  viewServiceById,
+  editProfile,
+  getProfileById,
+  deleteProfile,
+  addProfile
 } = require("../controllers/service.controller");
 
-// Appointment management routes
-router.get('/appointment', viewAllAppointments);
-router.get('/appointment/add', addAppointment);
-router.get('/appointment/edit:id', editAppointment);
-router.patch('/appointment/delete:id', deleteAppointment);
-router.patch('/appointment/view:id', viewAppointmentById);
+//Appointment Management Routes
+router.get('/:servicecenterid/appointment', viewAllAppointments);
+router.post('/:servicecenterid/appointment', addAppointment);                  // Add appointment
+router.patch('/:servicecenterid/appointment/:id', editAppointment);            // Edit appointment
+router.delete('/:servicecenterid/appointment/:id', deleteAppointment);         // Delete appointment
+router.get('/:servicecenterid/appointment/:id', viewAppointmentById);          // View specific appointment
 
-// calendar management routes
-router.get('/calendar', viewAppointmentsInCalendar);
-router.get('/calendar/add', addTask);
-router.get('/calendar/edit:id', editTask);
-router.patch('/calendar/delete:id', deleteTask);
-router.patch('/calendar/view', viewAllTasks);
-router.patch('/calendar/date', ViewTaskByDate);
+//Calendar Management Routes
+router.get('/:servicecenterid/calendar', viewAppointmentsInCalendar);
+router.post('/:servicecenterid/calendar/task', addTask);                       // Add task
+router.patch('/:servicecenterid/calendar/task/:id', editTask);                 // Edit task
+router.delete('/:servicecenterid/calendar/task/:id', deleteTask);              // Delete task
+router.get('/:servicecenterid/calendar/tasks', viewAllTasks);                  // View all tasks
+router.get('/:servicecenterid/calendar/date', ViewTaskByDate);                 // View task by date (pass date as query param)
 
-//service management routes
-router.get('/service', viewAllServices);
-router.get('/service/add', addService);
-router.get('/service/edit:id', editService);
-router.patch('/service/delete:id', deleteService);
-router.patch('/service/view:id', viewServiceById);
+//Service Management Routes
+router.get('/:servicecenterid/service', viewAllServices);
+router.post('/:servicecenterid/service', addService);                          // Add service
+router.patch('/:servicecenterid/service/:id', editService);                    // Edit service
+router.delete('/:servicecenterid/service/:id', deleteService);                 // Delete service
+router.get('/:servicecenterid/service/:id', viewServiceById);                  // View specific service
 
+//Profile Management Routes 
+router.patch('/profile/:id', editProfile);                    // Edit profile
+router.get('/profile/:id', getProfileById);                   // Get profile
+router.post('/profile', addProfile);                       //Add Profile
+router.delete('/profile/:id', deleteProfile);             //Delete Profile
 
-// Error handling middleware
+//Error Handling
 router.use((error, req, res, next) => {
   console.error('Service Center route error:', error);
   res.status(500).json({
