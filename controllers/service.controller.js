@@ -2,16 +2,107 @@ const { db } = require('../firebase');
 
 //Model
 const Appointment = require('../models/scAppointment.model');
+const Service = require('../models/scService.model');
+const CalendarTask = require('../models/calendartask.model');
+const ServiceCenter = require('../models/service.model');
 
 //Schema
-const { appointmentSchema, serviceSchema, calendarTaskSchema } = require('../validators/service.validator');
+const { appointmentSchema, serviceSchema, calendarTaskSchema , serviceCenterSchema} = require('../validators/service.validator');
 
 // Collections
 const appointmentsCollection = db.collection('appointments');
 const tasksCollection = db.collection('calendar_tasks');
 const servicesCollection = db.collection('services');
+const serviceCenterCollection = db.collection('serviceCenters');
 
-// ========== APPOINTMENTS ==========
+//Service Centers
+
+// Add Service Center Profile
+const addProfile = async (req, res) => {
+  try {
+    const { error, value } = serviceCenterSchema.validate(req.body);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    const newProfile = new ServiceCenter({
+      ...value,
+      createdAt: new Date()
+    });
+
+    //convert class instance to plain object before saving
+    const plainProfile = JSON.parse(JSON.stringify(newProfile));
+
+    const docRef = await serviceCenterCollection.add(plainProfile);
+    res.status(201).json({
+      success: true,
+      message: 'Service center profile added successfully',
+      id: docRef.id
+    });
+  } catch (err) {
+    console.error('Add profile error:', err);
+    res.status(500).json({ success: false, error: 'Failed to add service center profile' });
+  }
+};
+
+// Delete Service Center Profile
+const deleteProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'Missing profile ID' });
+    }
+
+    await serviceCenterCollection.doc(id).delete();
+    res.json({ success: true, message: 'Service center profile deleted successfully' });
+  } catch (err) {
+    console.error('Delete profile error:', err);
+    res.status(500).json({ success: false, error: 'Failed to delete profile' });
+  }
+};
+
+
+//Get the each id service Center Details
+const getProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if(!id) {
+      return res.status(400).json({ success:false, error:'Service Cener Id is Missing from the front end request' });
+    }
+
+    const doc = await serviceCenterCollection.doc(id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Service center not found' });
+    }
+    res.json({ success: true, data: { id: doc.id, ...doc.data() } });
+  } catch (err) {
+    console.error('Get service Center by ID error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch Service Center' });
+  }
+}
+
+//Service Center Profile
+const editProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error, value } = serviceCenterSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({ success: false, error: error.details[0].message });
+    }
+
+    const updatedProfile = new ServiceCenter(value);
+    const plainProfile = JSON.parse(JSON.stringify(updatedProfile));
+
+    await serviceCenterCollection.doc(id).update(plainProfile);
+    res.json({ success: true, message: 'Profile updated successfully', data: value });
+  } catch (err) {
+    console.error('Edit Profile error:', err);
+    res.status(500).json({ success: false, error: 'Failed to edit profile' });
+  }
+};
+
+//APPOINTMENTS
 
 // Add Appointment
 const addAppointment = async (req, res) => {
@@ -20,8 +111,13 @@ const addAppointment = async (req, res) => {
     const { error, value } = appointmentSchema.validate(req.body);
     if(error) return res.status(400).json({ success:false, error: error.details[0].message });
 
+    if (!value.servicecenterid) {
+      return res.status(400).json({ success: false, error: error.details[0].message });
+    }
+
     const newAppointment = new Appointment(value);
-    const docRef = await appointmentsCollection.add(newAppointment);
+    const plainAppointment = JSON.parse(JSON.stringify(newAppointment));
+    const docRef = await appointmentsCollection.add(plainAppointment);
 
     res.status(201).json({
       success: true,
@@ -37,23 +133,38 @@ const addAppointment = async (req, res) => {
 // Edit Appointment
 const editAppointment = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { servicecenterid,  id } = req.params;
     const updateData = { ...req.body, updatedAt: new Date() };
 
-    await appointmentsCollection.doc(id).update(updateData);
-    res.json({ success: true, message: 'Appointment updated successfully', data: updateData });
+    const { error, value } = appointmentSchema.validate(updateData);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    //check appointment using each service centers
+    const appointmentRef = db.collection('serviceCenters').doc(servicecenterid).collection('appointments').doc(id);
+
+    //check if the appointment exists
+    const doc = await appointmentRef.get();
+    if(!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Appointment not found' });
+    }
+
+    await appointmentRef.update(value);
+    res.json({ success: true, message: 'Appointment updated successfully', data: value });
   } catch (err) {
     console.error('Edit appointment error:', err);
     res.status(500).json({ success: false, error: 'Failed to update appointment' });
   }
 };
 
+
 // Delete Appointment
 const deleteAppointment = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { servicecenterid, id } = req.params;
 
-    await appointmentsCollection.doc(id).delete();
+    const appointmentRef = serviceCenterCollection.doc(servicecenterid).collection('appointments').doc(id);
+    await appointmentRef.delete();
+
     res.json({ success: true, message: 'Appointment deleted successfully' });
   } catch (err) {
     console.error('Delete appointment error:', err);
@@ -64,8 +175,16 @@ const deleteAppointment = async (req, res) => {
 // View All Appointments
 const viewAllAppointments = async (req, res) => {
   try {
-    const snapshot = await appointmentsCollection.get();
+    const { servicecenterid } = req.params;
+
+    if(servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Service Center Id not found' });
+    }
+
+    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('appointmets').get();
+    
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
     res.json({ success: true, data });
   } catch (err) {
     console.error('View appointments error:', err);
@@ -76,13 +195,16 @@ const viewAllAppointments = async (req, res) => {
 // View Appointment By ID
 const viewAppointmentById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { servicecenterid, id } = req.params;
 
-    if(!id) {
-      return res.status(400).json({ success:false, error:'Missing ServiceCenterID' });
+    if(!servicecenterid || !id) {
+      return res.status(400).json({ success:false, error:'Missing ServiceCenterID or appointment id' });
     }
 
-    const doc = await appointmentsCollection.doc(id).get();
+    const docRef = db.collection('serviceCenters').doc(servicecenterid).collection('appointments').doc(id);
+
+    const doc = await docRef.get();
+
     if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Appointment not found' });
     }
@@ -98,11 +220,18 @@ const viewAppointmentById = async (req, res) => {
 // Add Task to Calendar
 const addTask = async (req, res) => {
   try {
-    const newTask = {
-      ...req.body,
+    const { error, value } = calendarTaskSchema.validate(req.body);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    if (!value.servicecenterid) {
+      return res.status(400).json({ success: false, error: error.details[0].message });
+    }
+
+    const newTask = new CalendarTask({
+      ...value,
       createdAt: new Date(),
       updatedAt: new Date()
-    };
+    });
 
     const docRef = await tasksCollection.add(newTask);
     res.status(201).json({ success: true, message: 'Task added successfully', id: docRef.id });
@@ -112,24 +241,42 @@ const addTask = async (req, res) => {
   }
 };
 
+
 // Edit Task
 const editTask = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body, updatedAt: new Date() };
-    await tasksCollection.doc(id).update(updateData);
-    res.json({ success: true, message: 'Task updated successfully' });
+
+    const { error, value } = calendarTaskSchema.validate(updateData);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    //check task using each service centers
+    const taskRef = db.collection('serviceCenters').doc(servicecenterid).collection('task').doc(id);
+
+    //check if the task exists
+    const doc = await taskRef.get();
+    if(!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    await taskRef.update(value);
+    res.json({ success: true, message: 'Task updated successfully', data: value });
   } catch (err) {
     console.error('Edit task error:', err);
     res.status(500).json({ success: false, error: 'Failed to update task' });
   }
 };
 
+
 // Delete Task
 const deleteTask = async (req, res) => {
   try {
-    const { id } = req.params;
-    await tasksCollection.doc(id).delete();
+    const { servicecenterid, id } = req.params;
+
+    const taskRef = serviceCenterCollection.doc(servicecenterid).collection('tasks').doc(id);
+    await taskRef.delete();
+
     res.json({ success: true, message: 'Task deleted successfully' });
   } catch (err) {
     console.error('Delete task error:', err);
@@ -140,7 +287,14 @@ const deleteTask = async (req, res) => {
 // View All Tasks
 const viewAllTasks = async (req, res) => {
   try {
-    const snapshot = await tasksCollection.get();
+    const { servicecenterid } = req.params;
+
+    if(!servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Missing service center id'});
+    }
+
+    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('tasks').get();
+
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, data });
   } catch (err) {
@@ -152,9 +306,21 @@ const viewAllTasks = async (req, res) => {
 // View Task By Date
 const ViewTaskByDate = async (req, res) => {
   try {
-    const { date } = req.params;
-    await tasksCollection.doc(date).get();
-    res.json({ success: true, message: 'Task Get by Date' });
+    const { servicecenterid, date } = req.params;
+
+    if( !servicecenterid || !id) {
+      res.status(400).json({ success: false, error: 'Failed to find the service center id or date' });
+    }
+
+    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('tasks').where('date', '==', date).get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ success: false, error: 'No tasks found for the given date' });
+    }
+
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    res.json({ success: true, data, message: 'Task Get by Date' });
   } catch (err) {
     console.error('Get Task by Date is error:', err);
     res.status(500).json({ success: false, error: 'Failed to task get' });
@@ -164,10 +330,20 @@ const ViewTaskByDate = async (req, res) => {
 // View Appointments in Calendar View (grouped or filtered by date)
 const viewAppointmentsInCalendar = async (req, res) => {
   try {
-    const snapshot = await appointmentsCollection.get();
+    const { servicecenterid } = req.params;
+
+    if (!servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Missing service center ID' });
+    }
+
+    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('appointments').get();
+
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
     const grouped = data.reduce((acc, item) => {
       const date = item.date?.split('T')[0];
+      if(!date) return acc;
+
       if (!acc[date]) acc[date] = [];
       acc[date].push(item);
       return acc;
@@ -184,12 +360,21 @@ const viewAppointmentsInCalendar = async (req, res) => {
 // Add Service
 const addService = async (req, res) => {
   try {
-    const newService = {
-      ...req.body,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    const docRef = await servicesCollection.add(newService);
+    const { error, value } = serviceSchema.validate(req.body);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    if (!value.servicecenterid) {
+      return res.status(400).json({ success: false, error: error.details[0].message });
+    }
+
+    const newService = new Service ({
+        ...value,
+        createdAt: new Date(),
+        updatedAt: new Date()
+    })
+    const plainService = JSON.parse(JSON.stringify(newService));
+
+    const docRef = await servicesCollection.add(plainService);
     res.status(201).json({ success: true, message: 'Service added successfully', id: docRef.id });
   } catch (err) {
     console.error('Add service error:', err);
@@ -197,24 +382,49 @@ const addService = async (req, res) => {
   }
 };
 
+
 // Edit Service
 const editService = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { servicecenterid, id } = req.params;
     const updateData = { ...req.body, updatedAt: new Date() };
-    await servicesCollection.doc(id).update(updateData);
-    res.json({ success: true, message: 'Service updated successfully' });
+
+    const { error, value } = serviceSchema.validate(updateData);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    //check task using each service centers
+    const ServiceRef = db.collection('serviceCenters').doc(servicecenterid).collection('services').doc(id);
+
+    //check if the task exists
+    const doc = await ServiceRef.get();
+
+    console.log('Exists:', doc.exists);
+    console.log('Data:', doc.data());
+
+    if(!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Service not found' });
+    }
+
+    const updatedService = new Service(value);
+    const plainService = JSON.parse(JSON.stringify(updatedService));
+
+    await ServiceRef.update(plainService);
+    res.json({ success: true, message: 'Service updated successfully', data: value });
   } catch (err) {
     console.error('Edit service error:', err);
     res.status(500).json({ success: false, error: 'Failed to update service' });
   }
 };
 
+
 // Delete Service
 const deleteService = async (req, res) => {
   try {
-    const { id } = req.params;
-    await servicesCollection.doc(id).delete();
+    const { servicecenterid, id } = req.params;
+
+    const serviceRef = serviceCenterCollection.doc(servicecenterid).collection('services').doc(id);
+    await serviceRef.delete();
+
     res.json({ success: true, message: 'Service deleted successfully' });
   } catch (err) {
     console.error('Delete service error:', err);
@@ -225,7 +435,14 @@ const deleteService = async (req, res) => {
 // View All Services
 const viewAllServices = async (req, res) => {
   try {
-    const snapshot = await servicesCollection.get();
+    const { servicecenterid } = req.params;
+
+    if(!servicecenterid) {
+      res.status(400).json({ success: false, error: 'Failed to find service center' });
+    }
+
+    const snapshot = await db.collection('ServiceCenters').doc(servicecenterid).collection('services').get();
+
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, data });
   } catch (err) {
@@ -237,13 +454,14 @@ const viewAllServices = async (req, res) => {
 //view service by id
 const viewServiceById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { servicecenterid, id } = req.params;
 
-    if(!id) {
-      return res.status(400).json({ success:false, error:'Missing Service Id' });
+    if(!servicecenterid || !id) {
+      return res.status(400).json({ success:false, error:'Missing Service Id or service center id' });
     }
 
-    const doc = await servicesCollection.doc(id).get();
+    const doc = await db.collection('serviceCenters').doc(servicecenterid).collection('services').get(id);
+    
     if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Service not found' });
     }
@@ -270,5 +488,9 @@ module.exports = {
   editService,
   deleteService,
   viewAllServices,
-  viewServiceById
+  viewServiceById,
+  editProfile,
+  getProfileById,
+  addProfile,
+  deleteProfile
 };
