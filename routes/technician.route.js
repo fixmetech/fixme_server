@@ -7,7 +7,8 @@ const {
   getTechnicianById,
   updateTechnicianStatus,
   getTechnicianStatus,
-  loginTechnician
+  loginTechnician,
+  changeTechnicianAvailability
 } = require('../controllers/technician.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
@@ -28,6 +29,9 @@ router.patch('/:id/status', updateTechnicianStatus);
 
 // Get registration status by email (for technician app)
 router.get('/status/:email', getTechnicianStatus);
+
+//change available status of the technician
+router.patch('/:id/available',changeTechnicianAvailability);
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {
