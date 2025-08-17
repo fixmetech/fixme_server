@@ -420,6 +420,51 @@ const getTechnicianStatus = async (req, res) => {
     });
   }
 };
+//change the avaialble status of the technician
+const changeTechnicianAvailability = async (req, res) => {
+  try {
+    
+    const technicianId = req.params.id;
+    const technicianRef = collection.doc(technicianId);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+
+    const technicianData = doc.data();
+    const isActive = technicianData.isActive;
+   
+
+    await technicianRef.update({
+      isActive: !isActive,
+      updatedAt: new Date()
+    });
+    
+    res.json({
+      success: true,
+      message: `Technician availability updated to ${isActive ? 'active' : 'inactive'}`,
+      data: {
+        id: technicianId,
+        isActive: isActive,
+        updatedAt: new Date()
+      }
+    });
+  } catch (err) {
+    console.error('Change availability error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to change technician availability'
+    });
+  }
+};
+
+
+
+
 
 // Helper function to create moderator notification
 const createModeratorNotification = async (technicianId, technicianData) => {
@@ -509,6 +554,7 @@ const loginTechnician = async (req, res) => {
     // Remove sensitive data before sending response
     const { password: _, ...safeUserData } = technicianData;
 
+
     res.json({
       success: true,
       message: 'Login successful',
@@ -522,7 +568,8 @@ const loginTechnician = async (req, res) => {
     // Update last login time
     await collection.doc(technicianDoc.id).update({
       lastLogin: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      isActive: true // Set active status on login
     });
 
   } catch (error) {
@@ -572,5 +619,6 @@ module.exports = {
   updateTechnicianStatus,
   getTechnicianStatus,
   loginTechnician,
+  changeTechnicianAvailability,
   testEndpoint
 };
