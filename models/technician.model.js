@@ -4,6 +4,9 @@ class Technician {
     email,
     phone,
     password, // Will be hashed
+    dateOfBirth,
+    gender,
+    nicNumber,
     serviceCategory,
     specializations,
     serviceDescription,
@@ -13,13 +16,18 @@ class Technician {
     accountNumber,
     branch,
     idProofUrl,
-    certificateUrls,
-    profilePictureUrl
+    idProofBackUrl,
+    profilePictureUrl,
+    verificationType,
+    verificationDocuments
   }) {
     this.name = name;
     this.email = email;
     this.phone = phone;
     this.password = password; // Will be hashed before storage
+    this.dateOfBirth = dateOfBirth || null;
+    this.gender = gender || null;
+    this.nicNumber = nicNumber || null;
     this.serviceCategory = serviceCategory;
     this.specializations = specializations || [];
     this.serviceDescription = serviceDescription;
@@ -29,8 +37,17 @@ class Technician {
     this.accountNumber = accountNumber;
     this.branch = branch;
     this.idProofUrl = idProofUrl || null;
-    this.certificateUrls = certificateUrls || []; // Array of certificate objects
+    this.idProofBackUrl = idProofBackUrl || null;
     this.profilePictureUrl = profilePictureUrl || null;
+    this.verificationType = verificationType || null; // Certificate, Experience, Newbie
+    this.verificationDocuments = verificationDocuments || {
+      certificates: [],
+      workPhotos: [],
+      recommendationLetters: [],
+      clientReviews: [],
+      applicationType: verificationType || null,
+      applicationReason: null
+    };
     this.role = 'technician';
     this.status = 'pending'; // pending, approved, rejected
     this.registeredAt = new Date();

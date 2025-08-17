@@ -26,6 +26,11 @@ const registerTechnician = async (req, res) => {
       req.body.serviceRadius = parseFloat(req.body.serviceRadius);
     }
 
+    // Parse date of birth if provided
+    if (req.body.dateOfBirth && typeof req.body.dateOfBirth === 'string') {
+      req.body.dateOfBirth = new Date(req.body.dateOfBirth);
+    }
+
     // Validate request body
     const { error, value } = technicianRegistrationSchema.validate(req.body);
     if (error) {
@@ -44,13 +49,24 @@ const registerTechnician = async (req, res) => {
       });
     }
 
-    // Check if NIC already exists (removing this check as frontend doesn't have NIC)
+    // Check if phone already exists
     const existingPhone = await collection.where('phone', '==', value.phone).get();
     if (!existingPhone.empty) {
       return res.status(409).json({
         success: false,
         error: 'A technician with this phone number already exists'
       });
+    }
+
+    // Check if NIC already exists (if provided)
+    if (value.nicNumber) {
+      const existingNIC = await collection.where('nicNumber', '==', value.nicNumber).get();
+      if (!existingNIC.empty) {
+        return res.status(409).json({
+          success: false,
+          error: 'A technician with this NIC number already exists'
+        });
+      }
     }
 
     // Hash password
@@ -60,7 +76,15 @@ const registerTechnician = async (req, res) => {
     // Handle file uploads
     let profilePictureUrl = null;
     let idProofUrl = null;
-    let certificateUrls = [];
+    let idProofBackUrl = null;
+    let verificationDocuments = {
+      certificates: [],
+      workPhotos: [],
+      recommendationLetters: [],
+      clientReviews: [],
+      applicationType: value.verificationType || 'newbie',
+      applicationReason: value.applicationReason || null
+    };
 
     // Upload profile picture if provided
     if (req.files && req.files.profilePicture) {
@@ -84,6 +108,17 @@ const registerTechnician = async (req, res) => {
       );
     }
 
+    // Upload ID proof back side if provided
+    if (req.files && req.files.idProofBack) {
+      const idProofBack = req.files.idProofBack[0];
+      const fileName = generateFileName(idProofBack.originalname, 'id_back_');
+      idProofBackUrl = await uploadToFirebaseStorage(
+        idProofBack,
+        'technicians/id_proofs',
+        fileName
+      );
+    }
+
     // Upload certificates if provided (multiple files allowed)
     if (req.files && req.files.certificates) {
       for (const certificate of req.files.certificates) {
@@ -93,12 +128,70 @@ const registerTechnician = async (req, res) => {
           'technicians/certificates',
           fileName
         );
-        certificateUrls.push({
+        const certData = {
           url: certificateUrl,
           originalName: certificate.originalname,
           uploadedAt: new Date(),
           fileSize: certificate.size,
           mimeType: certificate.mimetype
+        };
+        verificationDocuments.certificates.push(certData);
+      }
+    }
+
+    // Upload work photos if provided
+    if (req.files && req.files.workPhotos) {
+      for (const workPhoto of req.files.workPhotos) {
+        const fileName = generateFileName(workPhoto.originalname, 'work_');
+        const workPhotoUrl = await uploadToFirebaseStorage(
+          workPhoto,
+          'technicians/verification/work_photos',
+          fileName
+        );
+        verificationDocuments.workPhotos.push({
+          url: workPhotoUrl,
+          originalName: workPhoto.originalname,
+          uploadedAt: new Date(),
+          fileSize: workPhoto.size,
+          mimeType: workPhoto.mimetype
+        });
+      }
+    }
+
+    // Upload recommendation letters if provided
+    if (req.files && req.files.recommendationLetters) {
+      for (const letter of req.files.recommendationLetters) {
+        const fileName = generateFileName(letter.originalname, 'rec_');
+        const letterUrl = await uploadToFirebaseStorage(
+          letter,
+          'technicians/verification/recommendations',
+          fileName
+        );
+        verificationDocuments.recommendationLetters.push({
+          url: letterUrl,
+          originalName: letter.originalname,
+          uploadedAt: new Date(),
+          fileSize: letter.size,
+          mimeType: letter.mimetype
+        });
+      }
+    }
+
+    // Upload client reviews if provided
+    if (req.files && req.files.clientReviews) {
+      for (const review of req.files.clientReviews) {
+        const fileName = generateFileName(review.originalname, 'review_');
+        const reviewUrl = await uploadToFirebaseStorage(
+          review,
+          'technicians/verification/client_reviews',
+          fileName
+        );
+        verificationDocuments.clientReviews.push({
+          url: reviewUrl,
+          originalName: review.originalname,
+          uploadedAt: new Date(),
+          fileSize: review.size,
+          mimeType: review.mimetype
         });
       }
     }
@@ -109,14 +202,42 @@ const registerTechnician = async (req, res) => {
       password: hashedPassword,
       profilePictureUrl: profilePictureUrl,
       idProofUrl: idProofUrl,
-      certificateUrls: certificateUrls
+      idProofBackUrl: idProofBackUrl,
+      verificationDocuments: verificationDocuments
     };
 
     const technician = new Technician(technicianData);
     
     // Save to Firestore
     const docRef = await collection.add({
-      ...technician,
+      name: technician.name,
+      email: technician.email,
+      phone: technician.phone,
+      password: technician.password,
+      dateOfBirth: technician.dateOfBirth,
+      gender: technician.gender,
+      nicNumber: technician.nicNumber,
+      serviceCategory: technician.serviceCategory,
+      specializations: technician.specializations,
+      serviceDescription: technician.serviceDescription,
+      address: technician.address,
+      serviceRadius: technician.serviceRadius,
+      bankName: technician.bankName,
+      accountNumber: technician.accountNumber,
+      branch: technician.branch,
+      idProofUrl: technician.idProofUrl,
+      idProofBackUrl: technician.idProofBackUrl,
+      profilePictureUrl: technician.profilePictureUrl,
+      verificationType: technician.verificationType,
+      verificationDocuments: technician.verificationDocuments,
+      role: technician.role,
+      status: technician.status,
+      moderatorComments: technician.moderatorComments,
+      approvedAt: technician.approvedAt,
+      rejectedAt: technician.rejectedAt,
+      rating: technician.rating,
+      totalJobs: technician.totalJobs,
+      isActive: technician.isActive,
       registeredAt: new Date(),
       updatedAt: new Date()
     });
@@ -460,6 +581,37 @@ const loginTechnician = async (req, res) => {
   }
 };
 
+// Test endpoint to verify data structure
+const testEndpoint = async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'Backend is working correctly',
+      supportedFields: [
+        'name', 'email', 'phone', 'password',
+        'dateOfBirth', 'gender', 'nicNumber',
+        'serviceCategory', 'specializations', 'serviceDescription',
+        'address', 'serviceRadius', 'bankName', 'accountNumber', 'branch',
+        'idProofUrl', 'idProofBackUrl', 'profilePictureUrl',
+        'verificationType', 'verificationDocuments'
+      ],
+      verificationDocumentStructure: {
+        certificates: [],
+        workPhotos: [],
+        recommendationLetters: [],
+        clientReviews: [],
+        applicationType: 'verificationType_value',
+        applicationReason: 'reason_for_newbie_application'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Test endpoint failed'
+    });
+  }
+};
+
 module.exports = {
   registerTechnician,
   getAllTechnicians,
@@ -467,5 +619,6 @@ module.exports = {
   updateTechnicianStatus,
   getTechnicianStatus,
   loginTechnician,
-  changeTechnicianAvailability
+  changeTechnicianAvailability,
+  testEndpoint
 };

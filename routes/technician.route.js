@@ -8,7 +8,8 @@ const {
   updateTechnicianStatus,
   getTechnicianStatus,
   loginTechnician,
-  changeTechnicianAvailability
+  changeTechnicianAvailability,
+  testEndpoint
 } = require('../controllers/technician.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
@@ -32,6 +33,8 @@ router.get('/status/:email', getTechnicianStatus);
 
 //change available status of the technician
 router.patch('/:id/available',changeTechnicianAvailability);
+// Test endpoint
+router.get('/test', testEndpoint);
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {
@@ -52,7 +55,7 @@ router.use((error, req, res, next) => {
   
   if (error.message.includes('Profile picture must be') || 
       error.message.includes('ID proof must be') || 
-      error.message.includes('Certificates must be')) {
+      error.message.includes('Verification documents must be')) {
     return res.status(400).json({
       success: false,
       error: error.message
