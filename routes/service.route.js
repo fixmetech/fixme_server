@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const {
+  viewAllServiceCenters,
   addAppointment,
   editAppointment,
   deleteAppointment,
@@ -22,6 +23,9 @@ const {
   deleteProfile,
   addProfile
 } = require("../controllers/service.controller");
+
+//get all service center details
+router.get('/', viewAllServiceCenters);
 
 //Appointment Management Routes
 router.get('/:servicecenterid/appointment', viewAllAppointments);
@@ -46,8 +50,8 @@ router.delete('/:servicecenterid/service/:id', deleteService);                 /
 router.get('/:servicecenterid/service/:id', viewServiceById);                  // View specific service
 
 //Profile Management Routes 
-router.patch('/profile/:id', editProfile);                    // Edit profile
-router.get('/profile/:id', getProfileById);                   // Get profile
+router.patch('/profile/:id', editProfile);                  // Edit profile
+router.get('/profile/:id', getProfileById);                 // Get profile
 router.post('/profile', addProfile);                       //Add Profile
 router.delete('/profile/:id', deleteProfile);             //Delete Profile
 

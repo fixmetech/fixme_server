@@ -15,6 +15,23 @@ const tasksCollection = db.collection('calendar_tasks');
 const servicesCollection = db.collection('services');
 const serviceCenterCollection = db.collection('serviceCenters');
 
+//get all service center details
+const viewAllServiceCenters = async (req, res) => {
+  try {
+    const snapshot = await serviceCenterCollection.get();
+    const serviceCenters = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    res.status(200).json(serviceCenters);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch service centers",
+      error: error.message
+    });
+  }
+};
+
 //Service Centers
 
 // Add Service Center Profile
@@ -181,7 +198,7 @@ const viewAllAppointments = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Service Center Id not found' });
     }
 
-    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('appointmets').get();
+    const snapshot = await servicesCollection.doc(servicecenterid).collection('appointmets').get();
     
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -359,28 +376,60 @@ const viewAppointmentsInCalendar = async (req, res) => {
 
 // Add Service
 const addService = async (req, res) => {
+  let tags = [];
+  if (req.body.tags) {
+    if (Array.isArray(req.body.tags)) {
+      tags = req.body.tags;
+    } else if (typeof req.body.tags === "string") {
+      try {
+        tags = JSON.parse(req.body.tags);
+        if (!Array.isArray(tags)) {
+          tags = req.body.tags.split(",").map(tag => tag.trim());
+        }
+      } catch {
+        tags = req.body.tags.split(",").map(tag => tag.trim());
+      }
+    }
+  }
+
   try {
-    const { error, value } = serviceSchema.validate(req.body);
+    const data = {
+      serviceName: req.body.serviceName,
+      serviceCategory: req.body.serviceCategory,
+      price: Number(req.body.price),   // Convert string to number
+      duration: Number(req.body.duration),
+      description: req.body.description,
+      tags,   //  use parsed tags here
+      servicecenterid: req.body.servicecenterid,
+      image: req.file ? `/uploads/${req.file.filename}` : undefined,
+    };
+
+    const { error, value } = serviceSchema.validate(data);
+
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
     if (!value.servicecenterid) {
-      return res.status(400).json({ success: false, error: error.details[0].message });
+      return res.status(400).json({ success: false, error: "Service center ID is required" });
     }
 
-    const newService = new Service ({
-        ...value,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    })
+    const newService = new Service({
+      ...value,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
     const plainService = JSON.parse(JSON.stringify(newService));
+    console.log(plainService);
 
     const docRef = await servicesCollection.add(plainService);
-    res.status(201).json({ success: true, message: 'Service added successfully', id: docRef.id });
+    res.status(201).json({ success: true, message: "Service added successfully", id: docRef.id });
+
   } catch (err) {
-    console.error('Add service error:', err);
-    res.status(500).json({ success: false, error: 'Failed to add service' });
+    console.error("Add service error:", err);
+    res.status(500).json({ success: false, error: "Failed to add service" });
   }
 };
+
 
 
 // Edit Service
@@ -392,37 +441,46 @@ const editService = async (req, res) => {
     const { error, value } = serviceSchema.validate(updateData);
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
-    //check task using each service centers
-    const ServiceRef = db.collection('serviceCenters').doc(servicecenterid).collection('services').doc(id);
-
-    //check if the task exists
+    // get service document by id
+    const ServiceRef = servicesCollection.doc(id);
     const doc = await ServiceRef.get();
 
-    console.log('Exists:', doc.exists);
-    console.log('Data:', doc.data());
-
-    if(!doc.exists) {
+    if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Service not found' });
     }
 
-    const updatedService = new Service(value);
-    const plainService = JSON.parse(JSON.stringify(updatedService));
+    // check if this service belongs to the servicecenterid
+    if (doc.data().servicecenterid !== servicecenterid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to edit this service' });
+    }
 
-    await ServiceRef.update(plainService);
+    await ServiceRef.update(value);
+
     res.json({ success: true, message: 'Service updated successfully', data: value });
+
   } catch (err) {
     console.error('Edit service error:', err);
     res.status(500).json({ success: false, error: 'Failed to update service' });
   }
 };
 
-
 // Delete Service
 const deleteService = async (req, res) => {
   try {
     const { servicecenterid, id } = req.params;
 
-    const serviceRef = serviceCenterCollection.doc(servicecenterid).collection('services').doc(id);
+    const serviceRef = servicesCollection.doc(id);
+    const doc = await serviceRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Service not found' });
+    }
+
+    // check if this service belongs to the servicecenterid
+    if (doc.data().servicecenterid !== servicecenterid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to edit this service' });
+    }
+
     await serviceRef.delete();
 
     res.json({ success: true, message: 'Service deleted successfully' });
@@ -441,10 +499,18 @@ const viewAllServices = async (req, res) => {
       res.status(400).json({ success: false, error: 'Failed to find service center' });
     }
 
-    const snapshot = await db.collection('ServiceCenters').doc(servicecenterid).collection('services').get();
+    const snapshot = await db.collection('services').where('servicecenterid', '==', servicecenterid).get();
+
+    console.log("Service Center ID:", servicecenterid);
+    console.log("Number of docs:", snapshot.size);
+
+    if (snapshot.empty) {
+      return res.status(404).json({ success: false, error: 'No services found' });
+    }
 
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json({ success: true, data });
+
   } catch (err) {
     console.error('View services error:', err);
     res.status(500).json({ success: false, error: 'Failed to fetch services' });
@@ -473,6 +539,7 @@ const viewServiceById = async (req, res) => {
 };
 
 module.exports = {
+  viewAllServiceCenters,
   addAppointment,
   editAppointment,
   deleteAppointment,
