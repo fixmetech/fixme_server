@@ -13,6 +13,8 @@ const {
 } = require('../controllers/technician.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
+const { addSpecialityToTechnician } = require('../controllers/addSpecialities.controller');
+
 // Technician registration endpoint
 router.post('/register', uploadTechnicianFiles, registerTechnician);
 
@@ -35,6 +37,9 @@ router.get('/status/:email', getTechnicianStatus);
 router.patch('/:id/available',changeTechnicianAvailability);
 // Test endpoint
 router.get('/test', testEndpoint);
+
+// Add speciality to technician
+router.post('/:technicianId/speciality', addSpecialityToTechnician);
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {
