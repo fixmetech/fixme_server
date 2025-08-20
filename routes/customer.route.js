@@ -17,7 +17,7 @@ router
   .route("/profile/:customerId")
   .get(getProfile)
   .put(updateProfile)
-  .delete(deleteProfile);
+  .delete(deleteProfile); 
 
 router
   .route("/profile/:customerId/property/:propertyId")
@@ -29,5 +29,6 @@ router.post("/profile/:customerId/property", AddProperty);
 
 router.get("/profile/:customerId/properties", getProperties);
 router.get("/profile/:customerId/properties/filters", getPropertiesWithFilters);
+
 
 module.exports = router;
