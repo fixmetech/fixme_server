@@ -8,6 +8,7 @@ const {
   updateTechnicianStatus,
   getTechnicianStatus,
   loginTechnician,
+  changeTechnicianAvailability,
   testEndpoint
 } = require('../controllers/technician.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
@@ -30,6 +31,8 @@ router.patch('/:id/status', updateTechnicianStatus);
 // Get registration status by email (for technician app)
 router.get('/status/:email', getTechnicianStatus);
 
+//change available status of the technician
+router.patch('/:id/available',changeTechnicianAvailability);
 // Test endpoint
 router.get('/test', testEndpoint);
 

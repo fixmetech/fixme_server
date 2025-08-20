@@ -12,10 +12,12 @@ const serviceRoutes = require('./routes/service.route');
 const technicianRoutes = require('./routes/technician.route');
 const moderatorRoutes = require('./routes/moderator.route');
 const customerRoutes = require('./routes/customer.route');
+const chatRoutes = require('./routes/chat.route');
 
 app.use('/api/services', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/moderators', moderatorRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api/customers', customerRoutes);
 
 // server start
