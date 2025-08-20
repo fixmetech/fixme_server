@@ -11,10 +11,12 @@ app.use(express.json());
 const serviceRoutes = require('./routes/service.route');
 const technicianRoutes = require('./routes/technician.route');
 const moderatorRoutes = require('./routes/moderator.route');
+const customerRoutes = require('./routes/customer.route');
 
 app.use('/api/services', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/moderators', moderatorRoutes);
+app.use('/api/customers', customerRoutes);
 
 // server start
 const PORT = process.env.PORT || 3000;
