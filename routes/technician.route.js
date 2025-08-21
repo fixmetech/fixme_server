@@ -13,6 +13,13 @@ const {
 } = require('../controllers/technician.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
+const {
+  getTechnicianProfileById,
+  getTechnicianProfileByEmail
+} = require('../controllers/technician.profile.controller');
+
+const { verifyFirebaseToken } = require('../utils/middleware/auth.middleware');
+
 // Technician registration endpoint
 router.post('/register', uploadTechnicianFiles, registerTechnician);
 
@@ -21,6 +28,12 @@ router.post('/login', loginTechnician);
 
 // Get all technicians (for moderators)
 router.get('/', getAllTechnicians);
+
+// Get technician profile by ID 
+router.get('/technician-profile/:id', verifyFirebaseToken, getTechnicianProfileById);
+
+// Get technician profile by email
+router.get('/technician-profile/by-email/:email', verifyFirebaseToken, getTechnicianProfileByEmail);
 
 // Get technician by ID
 router.get('/:id', getTechnicianById);
