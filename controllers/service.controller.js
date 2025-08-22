@@ -1,4 +1,5 @@
 const { db } = require('../firebase');
+const admin = require('firebase-admin');
 
 //Model
 const Appointment = require('../models/scAppointment.model');
@@ -14,6 +15,43 @@ const appointmentsCollection = db.collection('appointments');
 const tasksCollection = db.collection('calendar_tasks');
 const servicesCollection = db.collection('services');
 const serviceCenterCollection = db.collection('serviceCenters');
+
+// Get unique old customers from appointments
+const OldCustomers = async (req, res) => {
+  try {
+    const snapshot = await appointmentsCollection.get();
+
+    if (snapshot.empty) {
+      return res.json({ success: true, customers: [] });
+    }
+
+    const uniqueCustomers = new Map();
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const { email, customerName, phoneNumber } = data;
+
+      if (email) {
+        // Use email as a unique key
+        uniqueCustomers.set(email, {
+          id: doc.id,
+          customerName,
+          email,
+          phoneNumber,
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      customers: Array.from(uniqueCustomers.values()),
+    });
+  } catch (error) {
+    console.error("Error fetching old customers:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 
 //get all service center details
 const viewAllServiceCenters = async (req, res) => {
@@ -81,20 +119,26 @@ const deleteProfile = async (req, res) => {
 //Get the each id service Center Details
 const getProfileById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { servicecenterid } = req.params;
 
-    if(!id) {
-      return res.status(400).json({ success:false, error:'Service Cener Id is Missing from the front end request' });
+    if(!servicecenterid) {
+      res.status(400).json({ success: false, error: 'Failed to find service center' });
     }
 
-    const doc = await serviceCenterCollection.doc(id).get();
-    if (!doc.exists) {
-      return res.status(404).json({ success: false, error: 'Service center not found' });
+    const docRef = serviceCenterCollection.doc(servicecenterid);
+    const doc = await docRef.get();
+
+    console.log("men Service Center ID:", servicecenterid);
+    
+    if(!doc.exists) {
+      return res.status(404).json({ success: false, error: 'No service center found' });
     }
+
     res.json({ success: true, data: { id: doc.id, ...doc.data() } });
+
   } catch (err) {
-    console.error('Get service Center by ID error:', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch Service Center' });
+    console.error('View Serivice Center Details error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch service Center Profile' });
   }
 }
 
@@ -124,62 +168,113 @@ const editProfile = async (req, res) => {
 // Add Appointment
 const addAppointment = async (req, res) => {
   try {
-
+    // Validate request body
     const { error, value } = appointmentSchema.validate(req.body);
-    if(error) return res.status(400).json({ success:false, error: error.details[0].message });
+    if (error)
+      return res
+        .status(400)
+        .json({ success: false, error: error.details[0].message });
 
+    // Check required fields
     if (!value.servicecenterid) {
-      return res.status(400).json({ success: false, error: error.details[0].message });
+      return res
+        .status(400)
+        .json({ success: false, error: 'Service center ID is required.' });
+    }
+    if (!value.userid) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Customer UID is required.' });
+    }
+    if (!value.serviceid) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Service ID is required.' });
     }
 
+    // Check if appointment already exists for same customer/service/date/time
+    const existing = await appointmentsCollection
+      .where('userid', '==', value.userid)
+      .where('serviceid', '==', value.serviceid)
+      .where('servicecenterid', '==', value.servicecenterid)
+      .where('date', '==', value.date)
+      .where('time', '==', value.time)
+      .get();
+
+    if (!existing.empty) {
+      return res.status(400).json({
+        success: false,
+        error:
+          'This customer already has an appointment for this service at this time.',
+      });
+    }
+
+    // Create new appointment
     const newAppointment = new Appointment(value);
     const plainAppointment = JSON.parse(JSON.stringify(newAppointment));
-    const docRef = await appointmentsCollection.add(plainAppointment);
+
+    const docRef = await appointmentsCollection.add({
+      ...plainAppointment,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
     res.status(201).json({
       success: true,
       message: 'Appointment added successfully',
-      id: { id: docRef.id, ...newAppointment }
+      appointment: { id: docRef.id, ...plainAppointment },
     });
   } catch (err) {
     console.error('Add appointment error:', err);
-    res.status(500).json({ success: false, error: 'Failed to add appointment' });
+    res
+      .status(500)
+      .json({ success: false, error: 'Failed to add appointment' });
   }
 };
 
-// Edit Appointment
+
 const editAppointment = async (req, res) => {
   try {
-    const { servicecenterid,  id } = req.params;
+    const { servicecenterid, id } = req.params;
+    console.log(servicecenterid);
     const updateData = { ...req.body, updatedAt: new Date() };
 
     const { error, value } = appointmentSchema.validate(updateData);
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
-    //check appointment using each service centers
-    const appointmentRef = db.collection('serviceCenters').doc(servicecenterid).collection('appointments').doc(id);
-
-    //check if the appointment exists
+    const appointmentRef = appointmentsCollection.doc(id);
     const doc = await appointmentRef.get();
-    if(!doc.exists) {
+
+    if (!doc.exists || doc.data().servicecenterid !== servicecenterid) {
       return res.status(404).json({ success: false, error: 'Appointment not found' });
     }
 
     await appointmentRef.update(value);
     res.json({ success: true, message: 'Appointment updated successfully', data: value });
+
   } catch (err) {
     console.error('Edit appointment error:', err);
     res.status(500).json({ success: false, error: 'Failed to update appointment' });
   }
 };
 
-
 // Delete Appointment
 const deleteAppointment = async (req, res) => {
   try {
     const { servicecenterid, id } = req.params;
 
-    const appointmentRef = serviceCenterCollection.doc(servicecenterid).collection('appointments').doc(id);
+    const appointmentRef = serviceCenterCollection
+      .doc(servicecenterid)
+      .collection('appointments')
+      .doc(id);
+
+    const docSnap = await appointmentRef.get();
+
+    console.log(docSnap);
+
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, message: 'Appointment not found' });
+    }
+
     await appointmentRef.delete();
 
     res.json({ success: true, message: 'Appointment deleted successfully' });
@@ -189,16 +284,12 @@ const deleteAppointment = async (req, res) => {
   }
 };
 
+
 // View All Appointments
 const viewAllAppointments = async (req, res) => {
   try {
-    const { servicecenterid } = req.params;
 
-    if(servicecenterid) {
-      return res.status(400).json({ success: false, error: 'Service Center Id not found' });
-    }
-
-    const snapshot = await servicesCollection.doc(servicecenterid).collection('appointmets').get();
+    const snapshot = await appointmentsCollection.get();
     
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -517,21 +608,28 @@ const viewAllServices = async (req, res) => {
   }
 };
 
-//view service by id
+// view service by id and check servicecenterid
 const viewServiceById = async (req, res) => {
   try {
     const { servicecenterid, id } = req.params;
 
-    if(!servicecenterid || !id) {
-      return res.status(400).json({ success:false, error:'Missing Service Id or service center id' });
+    if (!servicecenterid || !id) {
+      return res.status(400).json({ success: false, error: 'Missing Service Id or Service Center Id' });
     }
 
-    const doc = await db.collection('serviceCenters').doc(servicecenterid).collection('services').get(id);
-    
+    const doc = await servicesCollection.doc(id).get();
+
     if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Service not found' });
     }
-    res.json({ success: true, data: { id: doc.id, ...doc.data() } });
+
+    const service = { id: doc.id, ...doc.data() };
+
+    if (service.servicecenterid !== servicecenterid) {
+      return res.status(403).json({ success: false, error: 'Service does not belong to this service center' });
+    }
+
+    res.json({ success: true, data: service });
   } catch (err) {
     console.error('Get service by ID error:', err);
     res.status(500).json({ success: false, error: 'Failed to fetch Service' });
@@ -559,5 +657,6 @@ module.exports = {
   editProfile,
   getProfileById,
   addProfile,
-  deleteProfile
+  deleteProfile,
+  OldCustomers
 };
