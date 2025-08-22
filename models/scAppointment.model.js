@@ -1,7 +1,9 @@
 class scAppointment {
     constructor({
       customerName,
-      servicecenterid, 
+      servicecenterid,
+      userid, 
+      serviceid,
       phoneNumber,
       date,
       time,
@@ -12,6 +14,8 @@ class scAppointment {
     }) {
       this.customerName = customerName;
       this.servicecenterid = servicecenterid;
+      this.userid = userid;
+      this.serviceid = serviceid;
       this.phoneNumber = phoneNumber;
       this.date = date;
       this.time = time;
