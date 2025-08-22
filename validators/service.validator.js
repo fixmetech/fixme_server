@@ -38,7 +38,17 @@ const appointmentSchema = Joi.object({
   servicecenterid: Joi.string().required().messages({
     'any.required': 'Service center ID is required'
   }),
-  updatedAt: Joi.date().optional()
+  serviceid: Joi.string().required().messages({
+    'any.required': 'Service ID is required'
+  }),
+  userid: Joi.string().required().messages({
+    'any.required': 'User  ID is required'
+  }),
+  notes: Joi.string().optional(),
+  updatedAt: Joi.date().optional(),
+  serviceName: Joi.string().required().messages({
+    'any.required': 'Service Name is required'
+  }),
 });
 
 // Service Schema

@@ -21,7 +21,8 @@ const {
   editProfile,
   getProfileById,
   deleteProfile,
-  addProfile
+  addProfile,
+  OldCustomers
 } = require("../controllers/service.controller");
 
 //get all service center details
@@ -33,6 +34,7 @@ router.post('/:servicecenterid/appointment', addAppointment);                  /
 router.patch('/:servicecenterid/appointment/:id', editAppointment);            // Edit appointment
 router.delete('/:servicecenterid/appointment/:id', deleteAppointment);         // Delete appointment
 router.get('/:servicecenterid/appointment/:id', viewAppointmentById);          // View specific appointment
+router.get('/:servicecenterid/oldcustomers/',OldCustomers) //View the old customers details 
 
 //Calendar Management Routes
 router.get('/:servicecenterid/calendar', viewAppointmentsInCalendar);
@@ -50,10 +52,10 @@ router.delete('/:servicecenterid/service/:id', deleteService);                 /
 router.get('/:servicecenterid/service/:id', viewServiceById);                  // View specific service
 
 //Profile Management Routes 
-router.patch('/profile/:id', editProfile);                  // Edit profile
-router.get('/profile/:id', getProfileById);                 // Get profile
+router.patch('/:servicecenterid/profile', editProfile);                  // Edit profile
+router.get('/:servicecenterid/profile', getProfileById);                 // Get profile
 router.post('/profile', addProfile);                       //Add Profile
-router.delete('/profile/:id', deleteProfile);             //Delete Profile
+router.delete('/:servicecenterid/profile', deleteProfile);             //Delete Profile
 
 //Error Handling
 router.use((error, req, res, next) => {
