@@ -13,7 +13,7 @@ const technicianRoutes = require('./routes/technician.route');
 const moderatorRoutes = require('./routes/moderator.route');
 const chatRoutes = require('./routes/chat.route');
 
-app.use('/api/services', serviceRoutes);
+app.use('/api/service_center', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/moderators', moderatorRoutes);
 app.use('/api/chat', chatRoutes);
