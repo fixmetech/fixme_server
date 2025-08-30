@@ -15,7 +15,7 @@ const appointmentSchema = Joi.object({
     'string.empty': 'Email is required',
     'string.email': 'Please enter a valid email'
   }),
-  date: Joi.date().iso().required().messages({
+  date: Joi.date().required().messages({
     'date.base': 'Invalid date format',
     'any.required': 'Date is required'
   }),
@@ -103,6 +103,15 @@ const calendarTaskSchema = Joi.object({
   }),
   servicecenterid: Joi.string().required().messages({
     'any.required': 'Service center ID is required'
+  }),
+  status: Joi.string().valid('Pending', 'Confirmed', 'Cancelled', 'Completed').required().messages({
+    'any.only': 'Status must be one of pending, confirmed, cancelled, or completed',
+    'string.empty': 'Status is required'
+  }),
+  duration: Joi.number().positive().required().messages({
+    'number.base': 'Duration must be a number',
+    'number.positive': 'Duration must be a positive number',
+    'any.required': 'Duration is required'
   }),
   updatedAt: Joi.date().optional()
 });
