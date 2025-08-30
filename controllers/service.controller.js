@@ -12,7 +12,7 @@ const { appointmentSchema, serviceSchema, calendarTaskSchema , serviceCenterSche
 
 // Collections
 const appointmentsCollection = db.collection('appointments');
-const tasksCollection = db.collection('calendar_tasks');
+const tasksCollection = db.collection('calendartasks');
 const servicesCollection = db.collection('services');
 const serviceCenterCollection = db.collection('serviceCenters');
 
@@ -164,7 +164,6 @@ const editProfile = async (req, res) => {
 };
 
 //APPOINTMENTS
-
 // Add Appointment
 const addAppointment = async (req, res) => {
   try {
@@ -328,18 +327,14 @@ const viewAppointmentById = async (req, res) => {
 // Add Task to Calendar
 const addTask = async (req, res) => {
   try {
-    const { error, value } = calendarTaskSchema.validate(req.body);
+    const servicecenterid = req.params.servicecenterid;
+    const dataToValidate = { ...req.body, servicecenterid };
+
+    const { error, value } = calendarTaskSchema.validate(dataToValidate);
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
-    if (!value.servicecenterid) {
-      return res.status(400).json({ success: false, error: error.details[0].message });
-    }
-
-    const newTask = new CalendarTask({
-      ...value,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
+    // Firestore compatible object
+    const newTask = { ...value, createdAt: new Date(), updatedAt: new Date() };
 
     const docRef = await tasksCollection.add(newTask);
     res.status(201).json({ success: true, message: 'Task added successfully', id: docRef.id });
@@ -353,29 +348,33 @@ const addTask = async (req, res) => {
 // Edit Task
 const editTask = async (req, res) => {
   try {
-    const { id } = req.params;
-    const updateData = { ...req.body, updatedAt: new Date() };
+    const { servicecenterid, id } = req.params; // now extracting both
+    const updateData = { ...req.body, updatedAt: new Date(), servicecenterid };
 
     const { error, value } = calendarTaskSchema.validate(updateData);
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
-    //check task using each service centers
-    const taskRef = db.collection('serviceCenters').doc(servicecenterid).collection('task').doc(id);
-
-    //check if the task exists
+    //use the same root collection as addTask
+    const taskRef = tasksCollection.doc(id);
     const doc = await taskRef.get();
-    if(!doc.exists) {
+
+    if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Task not found' });
+    }
+
+    // ensure task belongs to the same service center
+    if (doc.data().servicecenterid !== servicecenterid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized to edit this task' });
     }
 
     await taskRef.update(value);
     res.json({ success: true, message: 'Task updated successfully', data: value });
+
   } catch (err) {
     console.error('Edit task error:', err);
     res.status(500).json({ success: false, error: 'Failed to update task' });
   }
 };
-
 
 // Delete Task
 const deleteTask = async (req, res) => {
@@ -397,13 +396,24 @@ const viewAllTasks = async (req, res) => {
   try {
     const { servicecenterid } = req.params;
 
-    if(!servicecenterid) {
-      return res.status(400).json({ success: false, error: 'Missing service center id'});
+    if (!servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Missing service center id' });
     }
 
-    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('tasks').get();
+    // Get only tasks related to this service center
+    const snapshot = await tasksCollection
+      .where("servicecenterid", "==", servicecenterid)
+      .get();
 
-    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    if (snapshot.empty) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const data = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
     res.json({ success: true, data });
   } catch (err) {
     console.error('View tasks error:', err);
@@ -414,13 +424,19 @@ const viewAllTasks = async (req, res) => {
 // View Task By Date
 const ViewTaskByDate = async (req, res) => {
   try {
-    const { servicecenterid, date } = req.params;
+    const { servicecenterid } = req.params;
+    const { date } = req.query;   // Correct place for ?date=2025-08-25
 
-    if( !servicecenterid || !id) {
-      res.status(400).json({ success: false, error: 'Failed to find the service center id or date' });
+    if (!servicecenterid || !date) {
+      return res.status(400).json({ success: false, error: 'Service center id or date missing' });
     }
 
-    const snapshot = await db.collection('serviceCenters').doc(servicecenterid).collection('tasks').where('date', '==', date).get();
+    const snapshot = await db
+      .collection('serviceCenters')
+      .doc(servicecenterid)
+      .collection('tasks')
+      .where('date', '==', date)
+      .get();
 
     if (snapshot.empty) {
       return res.status(404).json({ success: false, error: 'No tasks found for the given date' });
@@ -428,12 +444,13 @@ const ViewTaskByDate = async (req, res) => {
 
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    res.json({ success: true, data, message: 'Task Get by Date' });
+    res.json({ success: true, data, message: 'Tasks retrieved by date' });
   } catch (err) {
-    console.error('Get Task by Date is error:', err);
-    res.status(500).json({ success: false, error: 'Failed to task get' });
+    console.error('Get Task by Date error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get tasks' });
   }
-}
+};
+
 
 // View Appointments in Calendar View (grouped or filtered by date)
 const viewAppointmentsInCalendar = async (req, res) => {
