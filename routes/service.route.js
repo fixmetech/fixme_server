@@ -22,7 +22,10 @@ const {
   getProfileById,
   deleteProfile,
   addProfile,
-  OldCustomers
+  OldCustomers,
+  addFeedbackReply,
+  editFeedbackReply,
+  viewAllFeedbacks
 } = require("../controllers/service.controller");
 
 //get all service center details
@@ -54,8 +57,13 @@ router.get('/:servicecenterid/service/:id', viewServiceById);                  /
 //Profile Management Routes 
 router.patch('/:servicecenterid/profile', editProfile);                  // Edit profile
 router.get('/:servicecenterid/profile', getProfileById);                 // Get profile
-router.post('/profile', addProfile);                       //Add Profile
+router.post('/:servicecenterid/profile', addProfile);                       //Add Profile
 router.delete('/:servicecenterid/profile', deleteProfile);             //Delete Profile
+
+//Feedback Managemetn ROutes
+router.post('/:servicecenterid/feedback/:id', addFeedbackReply);                  // add feedback reply
+router.patch('/:servicecenterid/feedback/:id', editFeedbackReply);                 // edit feedback reply
+router.get('/:servicecenterid/feedback', viewAllFeedbacks);                                 //view all feedbacks
 
 //Error Handling
 router.use((error, req, res, next) => {
