@@ -6,15 +6,17 @@ const Appointment = require('../models/scAppointment.model');
 const Service = require('../models/scService.model');
 const CalendarTask = require('../models/calendartask.model');
 const ServiceCenter = require('../models/service.model');
+const Feedback = require('../models/scFeedback.model');
 
 //Schema
-const { appointmentSchema, serviceSchema, calendarTaskSchema , serviceCenterSchema} = require('../validators/service.validator');
+const { appointmentSchema, serviceSchema, calendarTaskSchema , serviceCenterSchema, FeedbackSchema} = require('../validators/service.validator');
 
 // Collections
 const appointmentsCollection = db.collection('appointments');
 const tasksCollection = db.collection('calendartasks');
 const servicesCollection = db.collection('services');
 const serviceCenterCollection = db.collection('serviceCenters');
+const feedbackCollection = db.collection('scfeedbacks');
 
 // Get unique old customers from appointments
 const OldCustomers = async (req, res) => {
@@ -653,8 +655,193 @@ const viewServiceById = async (req, res) => {
   }
 };
 
+// view all feedback 
+// View All Feedbacks with Customer + Service Info
+const viewAllFeedbacks = async (req, res) => {
+  try {
+    const snapshot = await feedbackCollection.get();
+
+    if (snapshot.empty) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Collect all customerIds & serviceIds
+    const feedbackDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const customerIds = [...new Set(feedbackDocs.map(fb => fb.customerid))];
+    const serviceIds = [...new Set(feedbackDocs.map(fb => fb.serviceid))];
+
+    // --- Fetch Customers ---
+    const customersMap = new Map();
+    if (customerIds.length > 0) {
+      const customerSnapshots = await Promise.all(
+        customerIds.map(id => db.collection('users').doc(id).get())
+      );
+
+      customerSnapshots.forEach(snap => {
+        if (snap.exists) {
+          const { firstName, lastName, phone } = snap.data();
+          customersMap.set(snap.id, { firstName, lastName, phone });
+        }
+      });
+    }
+
+    // --- Fetch Services ---
+    const servicesMap = new Map();
+    if (serviceIds.length > 0) {
+      const serviceSnapshots = await Promise.all(
+        serviceIds.map(id => db.collection('services').doc(id).get())
+      );
+
+      serviceSnapshots.forEach(snap => {
+        if (snap.exists) {
+          const { serviceName } = snap.data();
+          servicesMap.set(snap.id, { serviceName });
+        }
+      });
+    }
+
+    // --- Combine Feedback with Customer + Service ---
+    const enrichedFeedbacks = feedbackDocs.map(fb => {
+      const customer = customersMap.get(fb.customerid) || {};
+      const service = servicesMap.get(fb.serviceid) || {};
+
+      return {
+        ...fb,
+        customer: {
+          id: fb.customerid,
+          firstName: customer.firstName || '',
+          lastName: customer.lastName || '',
+          phone: customer.phone || '',
+        },
+        service: {
+          id: fb.serviceid,
+          serviceName: service.serviceName || '',
+        },
+      };
+    });
+
+    console.log('feedba',enrichedFeedbacks);
+
+    res.json({ success: true, data: enrichedFeedbacks });
+
+  } catch (err) {
+    console.error('View feedbacks error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch feedbacks' });
+  }
+};
+
+//add feedback reply 
+const addFeedbackReply = async (req, res) => {
+  try {
+    const { servicecenterid, id } = req.params; // service center id + feedback id
+    const { replymessage, customerid } = req.body;     // reply + customer id
+
+    // Check required fields
+    if (!servicecenterid || !customerid || !replymessage) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Service center ID, Feedback ID, Customer ID, and Reply are required' 
+      });
+    }
+
+    const feedbackRef = feedbackCollection.doc(id);
+    const doc = await feedbackRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Feedback not found' });
+    }
+
+    const feedbackData = doc.data();
+
+    // Verify service center id
+    if (feedbackData.servicecenterid !== servicecenterid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Service Center ID' });
+    }
+
+    // Verify customer id
+    if (feedbackData.customerid !== customerid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Customer ID' });
+    }
+
+    // Only update reply field
+    await feedbackRef.update({
+      replymessage,
+      repliedAt: new Date()
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Reply added successfully', 
+      data: { replymessage, repliedAt: new Date() } 
+    });
+
+  } catch (err) {
+    console.error('Add reply error:', err);
+    res.status(500).json({ success: false, error: 'Failed to add reply' });
+  }
+};
+
+//edit feedback reply
+// edit reply for a feedback
+const editFeedbackReply = async (req, res) => {
+  try {
+    const { servicecenterid, id } = req.params; // service center id + feedback id
+    const { replymessage, customerid } = req.body;     // updated reply + customer id
+
+    // Check required fields
+    if (!servicecenterid || !id || !customerid || !replymessage) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Service center ID, Feedback ID, Customer ID, and Reply are required' 
+      });
+    }
+
+    const feedbackRef = feedbackCollection.doc(id);
+    const doc = await feedbackRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Feedback not found' });
+    }
+
+    const feedbackData = doc.data();
+
+    // Verify service center id
+    if (feedbackData.servicecenterid !== servicecenterid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Service Center ID' });
+    }
+
+    // Verify customer id
+    if (feedbackData.customerid !== customerid) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Customer ID' });
+    }
+
+    // Ensure a reply already exists before editing
+    if (!feedbackData.replymessage) {
+      return res.status(400).json({ success: false, error: 'No existing reply to edit' });
+    }
+
+    // Update only reply field
+    await feedbackRef.update({
+      replymessage,
+      replyEditedAt: new Date()
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Reply edited successfully', 
+      data: { replymessage, replyEditedAt: new Date() } 
+    });
+
+  } catch (err) {
+    console.error('Edit reply error:', err);
+    res.status(500).json({ success: false, error: 'Failed to edit reply' });
+  }
+};
+
 module.exports = {
   viewAllServiceCenters,
+  editFeedbackReply,
+  addFeedbackReply,
   addAppointment,
   editAppointment,
   deleteAppointment,
@@ -675,5 +862,6 @@ module.exports = {
   getProfileById,
   addProfile,
   deleteProfile,
-  OldCustomers
+  OldCustomers,
+  viewAllFeedbacks
 };
