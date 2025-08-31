@@ -156,9 +156,28 @@ const serviceCenterSchema = Joi.object({
   updatedAt: Joi.date().optional()
 });
 
+//Feedback Schema
+const FeedbackSchema = Joi.object({
+  replymessage: Joi.string().optional(),
+  servicecenterid: Joi.string().required().messages({
+    'any.required': 'Service center ID is required'
+  }),
+  serviceid: Joi.string().required().messages({
+    'any.required': 'Service ID is required'
+  }),
+  customerid: Joi.string().required().messages({
+    'any.required': 'customer ID is required'
+  }),
+  appointmentid: Joi.string().required().messages({
+    'any.required': 'appointment ID is required'
+  }),
+  updatedAt: Joi.date().optional()
+});
+
 module.exports = {
   appointmentSchema,
   serviceSchema,
   calendarTaskSchema,
-  serviceCenterSchema
+  serviceCenterSchema,
+  FeedbackSchema
 };
