@@ -147,23 +147,40 @@ const getProfileById = async (req, res) => {
 //Service Center Profile
 const editProfile = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { error, value } = serviceCenterSchema.validate(req.body);
+    const { servicecenterid } = req.params; // <-- use the route param
 
+    if (!servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Service Center ID is required' });
+    }
+
+    // Validate the incoming profile data
+    const { error, value } = serviceCenterSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ success: false, error: error.details[0].message });
     }
 
-    const updatedProfile = new ServiceCenter(value);
-    const plainProfile = JSON.parse(JSON.stringify(updatedProfile));
+    const updatedProfile = JSON.parse(JSON.stringify(value)); // convert to plain object
 
-    await serviceCenterCollection.doc(id).update(plainProfile);
-    res.json({ success: true, message: 'Profile updated successfully', data: value });
+    const docRef = serviceCenterCollection.doc(servicecenterid);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: 'Service center not found' });
+    }
+
+    await docRef.update(updatedProfile);
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: updatedProfile
+    });
   } catch (err) {
     console.error('Edit Profile error:', err);
     res.status(500).json({ success: false, error: 'Failed to edit profile' });
   }
 };
+
 
 //APPOINTMENTS
 // Add Appointment
