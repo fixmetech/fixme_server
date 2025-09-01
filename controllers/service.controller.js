@@ -730,17 +730,16 @@ const viewAllFeedbacks = async (req, res) => {
   }
 };
 
-//add feedback reply 
-const addFeedbackReply = async (req, res) => {
+// Reply or update reply for feedback
+const replyFeedback = async (req, res) => {
   try {
-    const { servicecenterid, id } = req.params; // service center id + feedback id
-    const { replymessage, customerid } = req.body;     // reply + customer id
+    const { servicecenterid, id } = req.params; // feedback id
+    const { replymessage, customerid } = req.body;
 
-    // Check required fields
-    if (!servicecenterid || !customerid || !replymessage) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Service center ID, Feedback ID, Customer ID, and Reply are required' 
+    if (!servicecenterid || !id || !customerid || !replymessage) {
+      return res.status(400).json({
+        success: false,
+        error: 'Service center ID, Feedback ID, Customer ID, and Reply are required'
       });
     }
 
@@ -753,95 +752,36 @@ const addFeedbackReply = async (req, res) => {
 
     const feedbackData = doc.data();
 
-    // Verify service center id
+    // Validate ownership
     if (feedbackData.servicecenterid !== servicecenterid) {
       return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Service Center ID' });
     }
 
-    // Verify customer id
     if (feedbackData.customerid !== customerid) {
       return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Customer ID' });
     }
 
-    // Only update reply field
+    // Update reply (either first reply or edit)
     await feedbackRef.update({
       replymessage,
       repliedAt: new Date()
     });
 
-    res.json({ 
-      success: true, 
-      message: 'Reply added successfully', 
-      data: { replymessage, repliedAt: new Date() } 
+    res.json({
+      success: true,
+      message: feedbackData.replymessage ? 'Reply updated successfully' : 'Reply added successfully',
+      data: { replymessage, repliedAt: new Date() }
     });
-
   } catch (err) {
-    console.error('Add reply error:', err);
-    res.status(500).json({ success: false, error: 'Failed to add reply' });
+    console.error('Reply error:', err);
+    res.status(500).json({ success: false, error: 'Failed to send reply' });
   }
 };
 
-//edit feedback reply
-// edit reply for a feedback
-const editFeedbackReply = async (req, res) => {
-  try {
-    const { servicecenterid, id } = req.params; // service center id + feedback id
-    const { replymessage, customerid } = req.body;     // updated reply + customer id
-
-    // Check required fields
-    if (!servicecenterid || !id || !customerid || !replymessage) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Service center ID, Feedback ID, Customer ID, and Reply are required' 
-      });
-    }
-
-    const feedbackRef = feedbackCollection.doc(id);
-    const doc = await feedbackRef.get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ success: false, error: 'Feedback not found' });
-    }
-
-    const feedbackData = doc.data();
-
-    // Verify service center id
-    if (feedbackData.servicecenterid !== servicecenterid) {
-      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Service Center ID' });
-    }
-
-    // Verify customer id
-    if (feedbackData.customerid !== customerid) {
-      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid Customer ID' });
-    }
-
-    // Ensure a reply already exists before editing
-    if (!feedbackData.replymessage) {
-      return res.status(400).json({ success: false, error: 'No existing reply to edit' });
-    }
-
-    // Update only reply field
-    await feedbackRef.update({
-      replymessage,
-      replyEditedAt: new Date()
-    });
-
-    res.json({ 
-      success: true, 
-      message: 'Reply edited successfully', 
-      data: { replymessage, replyEditedAt: new Date() } 
-    });
-
-  } catch (err) {
-    console.error('Edit reply error:', err);
-    res.status(500).json({ success: false, error: 'Failed to edit reply' });
-  }
-};
 
 module.exports = {
   viewAllServiceCenters,
-  editFeedbackReply,
-  addFeedbackReply,
+  replyFeedback,
   addAppointment,
   editAppointment,
   deleteAppointment,

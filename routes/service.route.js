@@ -23,8 +23,7 @@ const {
   deleteProfile,
   addProfile,
   OldCustomers,
-  addFeedbackReply,
-  editFeedbackReply,
+  replyFeedback,
   viewAllFeedbacks
 } = require("../controllers/service.controller");
 
@@ -61,8 +60,7 @@ router.post('/:servicecenterid/profile', addProfile);                       //Ad
 router.delete('/:servicecenterid/profile', deleteProfile);             //Delete Profile
 
 //Feedback Managemetn ROutes
-router.post('/:servicecenterid/feedback/:id', addFeedbackReply);                  // add feedback reply
-router.patch('/:servicecenterid/feedback/:id', editFeedbackReply);                 // edit feedback reply
+router.patch('/:servicecenterid/feedback/:id', replyFeedback);                 // edit feedback reply
 router.get('/:servicecenterid/feedback', viewAllFeedbacks);                                 //view all feedbacks
 
 //Error Handling
