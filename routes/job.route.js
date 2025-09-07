@@ -4,6 +4,8 @@ const router = express.Router();
 const { 
     getJobRequestById,
     confirmPin,
+    submitEstimate, 
+    getEstimateStatus
  } = require('../controllers/job.controller');
 
 // Optional auth: if you want to require Firebase ID token from client,
@@ -13,5 +15,7 @@ const {
 // GET /job-requests/:jobRequestId
 router.get('/job-requests/:jobRequestId', /* verifyAuth, */ getJobRequestById);
 router.post('/job-requests/:jobRequestId/confirm-pin', /* verifyAuth, */ confirmPin);
+router.post('/jobs/:jobId/estimate', /* verifyAuth, */ submitEstimate);
+router.get('/jobs/:jobId/estimate-status', /* verifyAuth, */ getEstimateStatus);
 
 module.exports = router;

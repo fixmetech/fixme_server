@@ -105,3 +105,64 @@ exports.confirmPin = async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// POST /api/jobs/:jobId/estimate
+exports.submitEstimate = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { estimatedCost, estimateDescription } = req.body || {};
+
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+    if (estimatedCost === undefined || Number(estimatedCost) <= 0) {
+      return res.status(400).json({ error: 'Invalid estimatedCost' });
+    }
+
+    // Optionally enforce auth here using req.user.uid === technicianId
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const nowIso = new Date().toISOString();
+
+    await ref.update({
+      estimatedCost: Number(estimatedCost),
+      estimateDescription: estimateDescription || '',
+      estimateStatus: 'Pending',      // Pending | Approved | Rejected
+      estimateSubmittedAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    const updated = (await ref.get()).data();
+
+    return res.json({
+      message: 'Estimate submitted',
+      job: { id: jobId, ...updated },
+    });
+  } catch (err) {
+    console.error('submitEstimate error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// GET /api/jobs/:jobId/estimate-status
+exports.getEstimateStatus = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const data = snap.data();
+    const status = data.estimateStatus || 'Pending';
+
+    return res.json({
+      status,
+      job: { id: jobId, ...data },
+    });
+  } catch (err) {
+    console.error('getEstimateStatus error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
