@@ -5,7 +5,8 @@ const {
     getJobRequestById,
     confirmPin,
     submitEstimate, 
-    getEstimateStatus
+    getEstimateStatus,
+    approveEstimateDecision,
  } = require('../controllers/job.controller');
 
 // Optional auth: if you want to require Firebase ID token from client,
@@ -17,5 +18,6 @@ router.get('/job-requests/:jobRequestId', /* verifyAuth, */ getJobRequestById);
 router.post('/job-requests/:jobRequestId/confirm-pin', /* verifyAuth, */ confirmPin);
 router.post('/jobs/:jobId/estimate', /* verifyAuth, */ submitEstimate);
 router.get('/jobs/:jobId/estimate-status', /* verifyAuth, */ getEstimateStatus);
+router.post('/jobs/:jobId/estimate-approval', /* verifyAuth, */ approveEstimateDecision);
 
 module.exports = router;
