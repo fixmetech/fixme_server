@@ -1,5 +1,8 @@
 const express = require("express");
+const multer = require("multer");
+
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 const {
   viewAllServiceCenters,
   addAppointment,
@@ -24,8 +27,20 @@ const {
   addProfile,
   OldCustomers,
   replyFeedback,
-  viewAllFeedbacks
+  viewAllFeedbacks,
+  changeStatus,
 } = require("../controllers/service.controller");
+
+const {
+  uploadServiceImage, 
+  getServiceImages, 
+  editServiceImage, 
+  deleteServiceImage,
+  uploadServiceCenterImage, 
+  getServiceCenterImages, 
+  editServiceCenterImage, 
+  deleteServiceCenterImage
+} = require("../controllers/serviceCenterImage.controller");
 
 //get all service center details
 router.get('/', viewAllServiceCenters);
@@ -34,6 +49,7 @@ router.get('/', viewAllServiceCenters);
 router.get('/:servicecenterid/appointment', viewAllAppointments);
 router.post('/:servicecenterid/appointment', addAppointment);                  // Add appointment
 router.patch('/:servicecenterid/appointment/:id', editAppointment);            // Edit appointment
+router.patch('/:servicecenterid/appointment/:id/status', changeStatus);       //change the status
 router.delete('/:servicecenterid/appointment/:id', deleteAppointment);         // Delete appointment
 router.get('/:servicecenterid/appointment/:id', viewAppointmentById);          // View specific appointment
 router.get('/:servicecenterid/oldcustomers/',OldCustomers) //View the old customers details 
@@ -58,6 +74,17 @@ router.patch('/:servicecenterid/profile', editProfile);                  // Edit
 router.get('/:servicecenterid/profile', getProfileById);                 // Get profile
 router.post('/:servicecenterid/profile', addProfile);                       //Add Profile
 router.delete('/:servicecenterid/profile', deleteProfile);             //Delete Profile
+
+router.post('/:servicecenterid/profile/images', upload.single('image'), uploadServiceCenterImage);
+router.get('/:servicecenterid/profile/images', getServiceCenterImages);
+router.patch('/:servicecenterid/profile/images', upload.single('image'), editServiceCenterImage);
+router.delete('/:servicecenterid/profile/images', deleteServiceCenterImage);
+
+// Services Images
+router.post('/:servicecenterid/service/:serviceid/images', upload.single('image'), uploadServiceImage);
+router.get('/:servicecenterid/service/:serviceid/images', getServiceImages);
+router.patch('/:servicecenterid/service/:serviceid/images', upload.single('image'), editServiceImage);
+router.delete('/:servicecenterid/service/:serviceid/images', deleteServiceImage);
 
 //Feedback Managemetn ROutes
 router.patch('/:servicecenterid/feedback/:id', replyFeedback);                 // edit feedback reply

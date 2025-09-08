@@ -275,6 +275,45 @@ const editAppointment = async (req, res) => {
   }
 };
 
+const changeStatus = async (req, res) => {
+  try {
+    const { servicecenterid, id } = req.params; // servicecenterid + appointmentId
+    const { status, serviceid, customerid } = req.body;
+
+    // Validate required fields
+    if (!servicecenterid || !id || !serviceid || !customerid || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields (servicecenterid, appointmentid, serviceid, customerid, or status)",
+      });
+    }
+
+    // Build update object
+    const value = {
+      status,
+      updatedAt: new Date(),
+    };
+
+    // Update the appointment
+    const appointmentRef = appointmentsCollection.doc(id);
+    await appointmentRef.update(value);
+
+    res.json({
+      success: true,
+      message: "Appointment updated successfully",
+      data: { appointmentId: id, ...value },
+    });
+
+  } catch (error) {
+    console.error("Error changing status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update appointment status",
+      error: error.message,
+    });
+  }
+};
+
 // Delete Appointment
 const deleteAppointment = async (req, res) => {
   try {
@@ -820,5 +859,6 @@ module.exports = {
   addProfile,
   deleteProfile,
   OldCustomers,
-  viewAllFeedbacks
+  viewAllFeedbacks,
+  changeStatus
 };
