@@ -215,3 +215,26 @@ exports.approveEstimateDecision = async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// GET /api/jobs/:jobId/status
+exports.getJobStatus = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const data = snap.data() || {};
+    const status = data.status || '';
+
+    return res.json({
+      status,
+      job: { id: jobId, ...data }, // handy if you want to inspect other fields when debugging
+    });
+  } catch (err) {
+    console.error('getJobStatus error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
