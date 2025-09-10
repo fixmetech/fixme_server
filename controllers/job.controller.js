@@ -265,3 +265,142 @@ exports.finishJob = async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+function generateSixDigit() {
+  return Math.floor(100000 + Math.random() * 900000); // 100000..999999
+}
+
+// POST /api/jobs/:jobId/finish-pin
+// Generates a unique 6-digit pin and saves it as jobRequests/{jobId}.finishPin
+// Overwrites existing finishPin if present (per your requirement).
+exports.setFinishPin = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    // Ensure global uniqueness across collection (reasonable attempt with a few tries)
+    // If you only need per-job uniqueness, you can skip the uniqueness check loop.
+    let finishPin;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 8;
+
+    do {
+      attempts += 1;
+      finishPin = generateSixDigit();
+
+      const dup = await db
+        .collection('jobRequests')
+        .where('finishPin', '==', finishPin)
+        .limit(1)
+        .get();
+
+      if (dup.empty) break;
+    } while (attempts < MAX_ATTEMPTS);
+
+    // Even if uniqueness check failed repeatedly, we still proceed with the last generated PIN.
+    // (Collision chances are very small; the loop above is a best-effort.)
+    const nowIso = new Date().toISOString();
+    await ref.update({
+      finishPin,
+      finishPinIssuedAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    const updated = (await ref.get()).data();
+
+    return res.json({
+      message: 'Finish PIN generated',
+      finishPin,
+      job: { id: jobId, ...updated },
+    });
+  } catch (err) {
+    console.error('setFinishPin error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// GET /api/jobs/:jobId/finish-pin
+// Returns { finishPin, job: { ...optional for debugging } }
+exports.getFinishPin = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const data = snap.data() || {};
+    const finishPin =
+      typeof data.finishPin === 'number'
+        ? data.finishPin
+        : Number(data.finishPin);
+
+    if (!Number.isFinite(finishPin)) {
+      return res.status(404).json({ error: 'Finish PIN not set for this job' });
+    }
+
+    return res.json({
+      finishPin,
+      job: { id: jobId }, // keep payload lean
+    });
+  } catch (err) {
+    console.error('getFinishPin error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// POST /api/jobs/:jobId/verify-finish-pin
+// Compares against jobRequests/{jobId}.finishPin and, if correct,
+// marks the job completed (status = 'Completed') with timestamps.
+exports.verifyFinishPin = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { pin } = req.body || {};
+
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+    if (pin === undefined || String(pin).trim() === '')
+      return res.status(400).json({ error: 'Missing pin' });
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const data = snap.data() || {};
+    const expected =
+      typeof data.finishPin === 'number'
+        ? data.finishPin
+        : Number(data.finishPin);
+    const given = typeof pin === 'number' ? pin : Number(pin);
+
+    if (!Number.isFinite(expected)) {
+      return res.status(400).json({ error: 'Finish PIN not set for this job' });
+    }
+    if (!Number.isFinite(given)) {
+      return res.status(400).json({ error: 'Invalid pin format' });
+    }
+    if (expected !== given) {
+      return res.status(401).json({ error: 'Incorrect PIN' });
+    }
+
+    const nowIso = new Date().toISOString();
+    await ref.update({
+      status: 'Completed',            // <-- final status (rename if you prefer)
+      customerConfirmedAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    const updated = (await ref.get()).data();
+    return res.json({
+      message: 'Finish PIN verified. Job completed.',
+      job: { id: jobId, ...updated },
+    });
+  } catch (err) {
+    console.error('verifyFinishPin error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
