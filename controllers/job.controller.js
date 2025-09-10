@@ -238,3 +238,30 @@ exports.getJobStatus = async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+exports.finishJob = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const nowIso = new Date().toISOString();
+    await ref.update({
+      status: 'TechnicianFinish',
+      technicianFinishedAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    const updated = (await ref.get()).data();
+    return res.json({
+      message: 'Job marked as finished',
+      job: { id: jobId, ...updated },
+    });
+  } catch (err) {
+    console.error('finishJob error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
