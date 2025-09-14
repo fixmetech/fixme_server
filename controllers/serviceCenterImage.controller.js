@@ -18,7 +18,7 @@ const uploadServiceCenterImage = async (req, res) => {
     if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
     const fileName = generateFileName(file.originalname, 'serviceCenter-');
-    const folderPath = `serviceCenters/${servicecenterid}/profiles`;
+    const folderPath = `serviceCenters/profiles/${servicecenterid}`;
 
     const downloadURL = await uploadToFirebaseStorage(file, folderPath, fileName);
 
@@ -100,96 +100,6 @@ const deleteServiceCenterImage = async (req, res) => {
 };
 
 // =========================
-// Upload Service Image
-// =========================
-const uploadServiceImage = async (req, res) => {
-  try {
-    const { servicecenterid } = req.params;
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No file uploaded' });
-
-    const fileName = generateFileName(file.originalname, 'service-');
-    const folderPath = `services/${servicecenterid}`;
-    const downloadURL = await uploadToFirebaseStorage(file, folderPath, fileName);
-
-    await db.collection('services').doc(servicecenterid).update({
-      images: admin.firestore.FieldValue.arrayUnion({
-        url: downloadURL,
-        filePath: `${folderPath}/${fileName}`,
-        uploadedAt: new Date().toISOString(),
-      }),
-    });
-
-    return res.status(200).json({ message: 'Service image uploaded successfully', url: downloadURL });
-  } catch (error) {
-    console.error('Upload error:', error);
-    return res.status(500).json({ error: error.message });
-  }
-};
-
-// =========================
-// Edit Service Image
-// =========================
-const editServiceImage = async (req, res) => {
-  try {
-    const { servicecenterid } = req.params;
-    const { oldFilePath } = req.body;
-    const newFile = req.file;
-
-    if (!oldFilePath || !newFile)
-      return res.status(400).json({ error: 'Old file path and new file are required' });
-
-    await deleteFromFirebaseStorage(oldFilePath);
-
-    const fileName = generateFileName(newFile.originalname, 'service-');
-    const folderPath = `services/${servicecenterid}`;
-    const downloadURL = await uploadToFirebaseStorage(newFile, folderPath, fileName);
-
-    const docRef = db.collection('services').doc(servicecenterid);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: 'Service not found' });
-
-    const images = (doc.data().images || []).map(img =>
-      img.filePath === oldFilePath
-        ? { url: downloadURL, filePath: `${folderPath}/${fileName}`, uploadedAt: new Date().toISOString() }
-        : img
-    );
-
-    await docRef.update({ images });
-    return res.status(200).json({ message: 'Service image replaced successfully', url: downloadURL });
-  } catch (error) {
-    console.error('Edit error:', error);
-    return res.status(500).json({ error: error.message });
-  }
-};
-
-// =========================
-// Delete Service Image
-// =========================
-const deleteServiceImage = async (req, res) => {
-  try {
-    const { servicecenterid } = req.params;
-    const { filePath } = req.body;
-
-    if (!filePath) return res.status(400).json({ error: 'File path is required' });
-
-    await deleteFromFirebaseStorage(filePath);
-
-    const docRef = db.collection('services').doc(servicecenterid);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: 'Service not found' });
-
-    const images = (doc.data().images || []).filter(img => img.filePath !== filePath);
-    await docRef.update({ images });
-
-    return res.status(200).json({ message: 'Service image deleted successfully' });
-  } catch (error) {
-    console.error('Delete error:', error);
-    return res.status(500).json({ error: error.message });
-  }
-};
-
-// =========================
 // Get Functions
 // =========================
 const getServiceCenterImages = async (req, res) => {
@@ -204,27 +114,10 @@ const getServiceCenterImages = async (req, res) => {
   }
 };
 
-const getServiceImages = async (req, res) => {
-  try {
-    const { servicecenterid } = req.params;
-    const doc = await db.collection('services').doc(servicecenterid).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Service not found' });
-    return res.status(200).json({ images: doc.data().images || [] });
-  } catch (error) {
-    console.error('Fetch error:', error);
-    return res.status(500).json({ error: error.message });
-  }
-};
-
 module.exports = {
   // Service Center
   uploadServiceCenterImage,
   getServiceCenterImages,
   editServiceCenterImage,
-  deleteServiceCenterImage,
-  // Services
-  uploadServiceImage,
-  getServiceImages,
-  editServiceImage,
-  deleteServiceImage,
+  deleteServiceCenterImage
 };

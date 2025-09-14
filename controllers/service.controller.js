@@ -1,5 +1,6 @@
 const { db } = require('../firebase');
 const admin = require('firebase-admin');
+const { bucket, uploadToFirebaseStorage,deleteFromFirebaseStorage, generateFileName } = require('../utils/upload.util');
 
 //Model
 const Appointment = require('../models/scAppointment.model');
@@ -542,53 +543,74 @@ const viewAppointmentsInCalendar = async (req, res) => {
 
 // Add Service
 const addService = async (req, res) => {
-  let tags = [];
-  if (req.body.tags) {
-    if (Array.isArray(req.body.tags)) {
-      tags = req.body.tags;
-    } else if (typeof req.body.tags === "string") {
-      try {
-        tags = JSON.parse(req.body.tags);
-        if (!Array.isArray(tags)) {
-          tags = req.body.tags.split(",").map(tag => tag.trim());
-        }
-      } catch {
-        tags = req.body.tags.split(",").map(tag => tag.trim());
-      }
-    }
-  }
+  const { servicecenterid } = req.params;
 
   try {
+    // 🔍 Check if service center exists
+    const serviceCenterRef = db.collection("serviceCenters").doc(servicecenterid);
+    const serviceCenterDoc = await serviceCenterRef.get();
+
+    if (!serviceCenterDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Service center not found"
+      });
+    }
+
+    //Now continue your existing code
+    let tags = [];
+    if (req.body.tags) {
+      if (Array.isArray(req.body.tags)) {
+        tags = req.body.tags;
+      } else if (typeof req.body.tags === "string") {
+        try {
+          tags = JSON.parse(req.body.tags);
+          if (!Array.isArray(tags)) {
+            tags = req.body.tags.split(",").map(tag => tag.trim());
+          }
+        } catch {
+          tags = req.body.tags.split(",").map(tag => tag.trim());
+        }
+      }
+    }
+
+    let imageUrl = null;
+    if (req.files && req.files.serviceImage) {
+      const serviceImage = req.files.serviceImage[0];
+      const fileName = generateFileName(serviceImage.originalname, "service_");
+      imageUrl = await uploadToFirebaseStorage(
+        serviceImage,
+        `serviceCenter/services/${servicecenterid}`,
+        fileName
+      );
+    }
+
     const data = {
       serviceName: req.body.serviceName,
       serviceCategory: req.body.serviceCategory,
-      price: Number(req.body.price),   // Convert string to number
+      price: Number(req.body.price),
       duration: Number(req.body.duration),
       description: req.body.description,
-      tags,   //  use parsed tags here
-      servicecenterid: req.body.servicecenterid,
-      image: req.file ? `/uploads/${req.file.filename}` : undefined,
+      tags,
+      servicecenterid,
+      image: imageUrl || undefined
     };
 
     const { error, value } = serviceSchema.validate(data);
-
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
-    if (!value.servicecenterid) {
-      return res.status(400).json({ success: false, error: "Service center ID is required" });
-    }
-
-    const newService = new Service({
+    const newService = {
       ...value,
       createdAt: new Date(),
       updatedAt: new Date()
+    };
+
+    const docRef = await servicesCollection.add(newService);
+    res.status(201).json({
+      success: true,
+      message: "Service added successfully",
+      id: docRef.id
     });
-
-    const plainService = JSON.parse(JSON.stringify(newService));
-    console.log(plainService);
-
-    const docRef = await servicesCollection.add(plainService);
-    res.status(201).json({ success: true, message: "Service added successfully", id: docRef.id });
 
   } catch (err) {
     console.error("Add service error:", err);
@@ -596,31 +618,62 @@ const addService = async (req, res) => {
   }
 };
 
-
-
 // Edit Service
 const editService = async (req, res) => {
   try {
     const { servicecenterid, id } = req.params;
-    const updateData = { ...req.body, updatedAt: new Date() };
 
-    const { error, value } = serviceSchema.validate(updateData);
-    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+    // Fetch existing service
+    const serviceRef = servicesCollection.doc(id);
+    const doc = await serviceRef.get();
 
-    // get service document by id
-    const ServiceRef = servicesCollection.doc(id);
-    const doc = await ServiceRef.get();
+    let tags = [];
+    if (req.body.tags) {
+      if (Array.isArray(req.body.tags)) {
+        tags = req.body.tags;
+      } else if (typeof req.body.tags === "string") {
+        try {
+          tags = JSON.parse(req.body.tags);
+          if (!Array.isArray(tags)) {
+            tags = req.body.tags.split(",").map(tag => tag.trim());
+          }
+        } catch {
+          tags = req.body.tags.split(",").map(tag => tag.trim());
+        }
+      }
+    }
 
     if (!doc.exists) {
       return res.status(404).json({ success: false, error: 'Service not found' });
     }
 
-    // check if this service belongs to the servicecenterid
     if (doc.data().servicecenterid !== servicecenterid) {
       return res.status(403).json({ success: false, error: 'Unauthorized to edit this service' });
     }
 
-    await ServiceRef.update(value);
+    let updateData = { ...req.body, updatedAt: new Date(), tags };
+
+    //Handle image upload if new one is provided
+    if (req.files && req.files.serviceImage) {
+      const serviceImage = req.files.serviceImage[0];
+      const fileName = generateFileName(serviceImage.originalname, 'service_');
+
+      // Upload new image
+      const newImageUrl = await uploadToFirebaseStorage(serviceImage, `serviceCenter/services/${servicecenterid}`, fileName);
+
+      // Delete old image if exists
+      if (doc.data().imagePath) {
+        await deleteFromFirebaseStorage(doc.data().imagePath);
+      }
+      
+      updateData.image = newImageUrl;
+    }
+
+    // Validate schema
+    const { error, value } = serviceSchema.validate(updateData);
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    await serviceRef.update(value);
 
     res.json({ success: true, message: 'Service updated successfully', data: value });
 
@@ -642,14 +695,19 @@ const deleteService = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Service not found' });
     }
 
-    // check if this service belongs to the servicecenterid
     if (doc.data().servicecenterid !== servicecenterid) {
-      return res.status(403).json({ success: false, error: 'Unauthorized to edit this service' });
+      return res.status(403).json({ success: false, error: 'Unauthorized to delete this service' });
+    }
+
+    // Delete image from Firebase if exists
+    if (doc.data().imagePath) {
+      await deleteFromFirebaseStorage(doc.data().imagePath);
     }
 
     await serviceRef.delete();
 
     res.json({ success: true, message: 'Service deleted successfully' });
+
   } catch (err) {
     console.error('Delete service error:', err);
     res.status(500).json({ success: false, error: 'Failed to delete service' });
@@ -661,20 +719,23 @@ const viewAllServices = async (req, res) => {
   try {
     const { servicecenterid } = req.params;
 
-    if(!servicecenterid) {
-      res.status(400).json({ success: false, error: 'Failed to find service center' });
+    if (!servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Failed to find service center' });
     }
 
     const snapshot = await db.collection('services').where('servicecenterid', '==', servicecenterid).get();
-
-    console.log("Service Center ID:", servicecenterid);
-    console.log("Number of docs:", snapshot.size);
 
     if (snapshot.empty) {
       return res.status(404).json({ success: false, error: 'No services found' });
     }
 
-    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Return services with image URLs included
+    const data = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      image: doc.data().image || null   // return null if no image
+    }));
+
     res.json({ success: true, data });
 
   } catch (err) {

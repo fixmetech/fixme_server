@@ -3,6 +3,10 @@ const multer = require("multer");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const uploadServiceFile = upload.fields([
+  { name: 'serviceImage', maxCount: 1 }
+]);
+
 const {
   viewAllServiceCenters,
   addAppointment,
@@ -32,10 +36,6 @@ const {
 } = require("../controllers/service.controller");
 
 const {
-  uploadServiceImage, 
-  getServiceImages, 
-  editServiceImage, 
-  deleteServiceImage,
   uploadServiceCenterImage, 
   getServiceCenterImages, 
   editServiceCenterImage, 
@@ -64,8 +64,8 @@ router.get('/:servicecenterid/calendar/date', ViewTaskByDate);                 /
 
 //Service Management Routes
 router.get('/:servicecenterid/service', viewAllServices);
-router.post('/:servicecenterid/service', addService);                          // Add service
-router.patch('/:servicecenterid/service/:id', editService);                    // Edit service
+router.post('/:servicecenterid/service', uploadServiceFile, addService);                          // Add service
+router.patch('/:servicecenterid/service/:id', uploadServiceFile, editService);                    // Edit service
 router.delete('/:servicecenterid/service/:id', deleteService);                 // Delete service
 router.get('/:servicecenterid/service/:id', viewServiceById);                  // View specific service
 
@@ -79,12 +79,6 @@ router.post('/:servicecenterid/profile/images', upload.single('image'), uploadSe
 router.get('/:servicecenterid/profile/images', getServiceCenterImages);
 router.patch('/:servicecenterid/profile/images', upload.single('image'), editServiceCenterImage);
 router.delete('/:servicecenterid/profile/images', deleteServiceCenterImage);
-
-// Services Images
-router.post('/:servicecenterid/service/:serviceid/images', upload.single('image'), uploadServiceImage);
-router.get('/:servicecenterid/service/:serviceid/images', getServiceImages);
-router.patch('/:servicecenterid/service/:serviceid/images', upload.single('image'), editServiceImage);
-router.delete('/:servicecenterid/service/:serviceid/images', deleteServiceImage);
 
 //Feedback Managemetn ROutes
 router.patch('/:servicecenterid/feedback/:id', replyFeedback);                 // edit feedback reply
