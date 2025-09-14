@@ -235,6 +235,7 @@ const addAppointment = async (req, res) => {
     const docRef = await appointmentsCollection.add({
       ...plainAppointment,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      scdeleted: false
     });
 
     res.status(201).json({
@@ -315,40 +316,66 @@ const changeStatus = async (req, res) => {
   }
 };
 
-// Delete Appointment
+//delete appointment
 const deleteAppointment = async (req, res) => {
   try {
     const { servicecenterid, id } = req.params;
 
-    const appointmentRef = serviceCenterCollection
-      .doc(servicecenterid)
-      .collection('appointments')
+    // Check if the service center exists
+    const serviceCenterRef = db.collection("serviceCenters").doc(servicecenterid);
+    const serviceCenterDoc = await serviceCenterRef.get();
+
+    if (!serviceCenterDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Service center not found"
+      });
+    }
+
+    // Check if appointment exists
+    const appointmentRef = db
+      .collection("appointments") // or serviceCenterCollection.collection('appointments')
       .doc(id);
 
     const docSnap = await appointmentRef.get();
-
-    console.log(docSnap);
 
     if (!docSnap.exists) {
       return res.status(404).json({ success: false, message: 'Appointment not found' });
     }
 
-    await appointmentRef.delete();
+    // Soft delete
+    await appointmentRef.update({
+      scdeleted: true,
+      updatedAt: new Date()
+    });
 
-    res.json({ success: true, message: 'Appointment deleted successfully' });
+    res.json({ success: true, message: 'Appointment deleted (soft delete) successfully' });
+
   } catch (err) {
     console.error('Delete appointment error:', err);
     res.status(500).json({ success: false, error: 'Failed to delete appointment' });
   }
 };
 
-
 // View All Appointments
 const viewAllAppointments = async (req, res) => {
   try {
+    const { servicecenterid } = req.params;
 
-    const snapshot = await appointmentsCollection.get();
-    
+    if (!servicecenterid) {
+      return res.status(400).json({ success: false, error: 'Service center ID is required' });
+    }
+
+    // Query only appointments where scDeleted is false
+    const snapshot = await appointmentsCollection
+      .where('servicecenterid', '==', servicecenterid)
+      .where('scdeleted', '==', false)
+      .get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ success: false, error: 'No appointments found' });
+    }
+
     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     res.json({ success: true, data });
@@ -402,7 +429,6 @@ const addTask = async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to add task' });
   }
 };
-
 
 // Edit Task
 const editTask = async (req, res) => {
