@@ -13,12 +13,14 @@ const technicianRoutes = require('./routes/technician.route');
 const moderatorRoutes = require('./routes/moderator.route');
 const chatRoutes = require('./routes/chat.route');
 const jobRequestsRoute = require('./routes/job.route');
+const bookingRoutes = require('./routes/booking.router');
 
 app.use('/api/service_center', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/moderators', moderatorRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api', jobRequestsRoute);
+app.use('/api/user', bookingRoutes);
 
 // server start
 const PORT = process.env.PORT || 3000;

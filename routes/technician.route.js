@@ -11,6 +11,8 @@ const {
   changeTechnicianAvailability,
   testEndpoint
 } = require('../controllers/technician.controller');
+
+const {getBookingsByTechnician} = require('../controllers/booking.controller');
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
 
@@ -56,6 +58,9 @@ router.get('/test', testEndpoint);
 // Add speciality to technician
 router.post('/:technicianId/speciality', addSpecialityToTechnician);
 
+//Get scheduled bookings for a technician
+router.get("/bookings/:technicianId",getBookingsByTechnician);
+
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
@@ -87,5 +92,7 @@ router.use((error, req, res, next) => {
     error: 'File upload error occurred.'
   });
 });
+
+
 
 module.exports = router;
