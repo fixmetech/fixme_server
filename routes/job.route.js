@@ -12,6 +12,7 @@ const {
     setFinishPin,
     getFinishPin,
     verifyFinishPin,
+    saveReview,
  } = require('../controllers/job.controller');
 
 // Optional auth: if you want to require Firebase ID token from client,
@@ -29,5 +30,6 @@ router.post('/jobs/:jobId/finish', /* verifyAuth, */ finishJob);
 router.post('/jobs/:jobId/finish-pin', /* verifyAuth, */ setFinishPin);
 router.get('/jobs/:jobId/finish-pin', /* verifyAuth, */ getFinishPin);
 router.post('/jobs/:jobId/verify-finish-pin', /* verifyAuth, */ verifyFinishPin);
+router.post('/jobs/:jobId/review', /* verifyAuth, */ saveReview);
 
 module.exports = router;

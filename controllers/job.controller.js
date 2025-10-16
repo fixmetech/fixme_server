@@ -1,5 +1,6 @@
 // fixme_server/controllers/job.controller.js
 const { db } = require('../firebase');
+const Feedback = require('../models/feedback.model');
 
 /**
  * GET /job-requests/:jobRequestId
@@ -402,5 +403,60 @@ exports.verifyFinishPin = async (req, res) => {
   } catch (err) {
     console.error('verifyFinishPin error:', err);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// POST /api/jobs/:jobId/review
+// Body: { rating: number(1..5), review: string }
+exports.saveReview = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    let { rating, review } = req.body || {};
+
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+    rating = Number(rating);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'rating must be between 1 and 5' });
+    }
+    review = typeof review === 'string' ? review.trim() : '';
+    if (!review) return res.status(400).json({ error: 'review is required' });
+
+    const jobRef = db.collection('jobRequests').doc(jobId);
+    const jobSnap = await jobRef.get();
+    if (!jobSnap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const job = jobSnap.data();
+    const technicianId = job.technicianId || null;
+    const customerId = job.customerId || null;
+
+    // 1️⃣ Update jobRequests
+    await jobRef.update({
+      rating,
+      review,
+      reviewAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // 2️⃣ Create Feedback instance
+    const feedback = new Feedback({
+      jobId,
+      technicianId,
+      customerId,
+      rating,
+      review,
+      serviceCategory: job.serviceCategory,
+      status: job.status,
+    });
+
+    // 3️⃣ Save to technicianFeedback collection
+    await db
+      .collection('technicianFeedback')
+      .doc(jobId)
+      .set(feedback.toFirestore(), { merge: true });
+
+    res.json({ message: 'Review saved successfully' });
+  } catch (err) {
+    console.error('saveReview error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
