@@ -404,3 +404,41 @@ exports.verifyFinishPin = async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// POST /api/jobs/:jobId/review
+// Body: { rating: number(1..5), review: string }
+exports.saveReview = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    let { rating, review } = req.body || {};
+
+    if (!jobId) return res.status(400).json({ error: 'Missing jobId' });
+
+    // Normalize & validate
+    rating = Number(rating);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'rating must be a number between 1 and 5' });
+    }
+    review = typeof review === 'string' ? review.trim() : '';
+    if (review.length === 0) {
+      return res.status(400).json({ error: 'review is required' });
+    }
+
+    const ref = db.collection('jobRequests').doc(jobId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Job not found' });
+
+    const nowIso = new Date().toISOString();
+    await ref.update({
+      rating,                 // <-- number of stars
+      review,                 // <-- customer written text
+      reviewAt: nowIso,       // helpful timestamp
+      updatedAt: nowIso,
+    });
+
+    return res.json({ message: 'Review saved' });
+  } catch (err) {
+    console.error('saveReview error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
