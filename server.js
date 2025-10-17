@@ -17,6 +17,7 @@ const chatRoutes = require('./routes/chat.route');
 const complaintRoutes = require('./routes/complaint.route.simple');
 
 const jobRequestsRoute = require('./routes/job.route');
+const bookingRoutes = require('./routes/booking.router');
 
 
 app.use('/api/service_center', serviceRoutes);
@@ -28,6 +29,7 @@ app.use('/api/complaints', complaintRoutes);
 
 app.use('/api/customers', customerRoutes);
 app.use('/api', jobRequestsRoute);
+app.use('/api/user', bookingRoutes);
 
 
 // server start
