@@ -13,6 +13,8 @@ const technicianRoutes = require('./routes/technician.route');
 const moderatorRoutes = require('./routes/moderator.route');
 const customerRoutes = require('./routes/customer.route');
 const chatRoutes = require('./routes/chat.route');
+const utilityRoutes = require('./routes/utility.route');
+const jobRoutes = require('./routes/rjob.route');
 const searchRoutes = require('./routes/search.route');
 
 const complaintRoutes = require('./routes/complaint.route.simple');
@@ -30,6 +32,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api/complaints', complaintRoutes);
 
 app.use('/api/customers', customerRoutes);
+app.use('/api/utility', utilityRoutes);
+app.use('/api/rjobs', jobRoutes);
 app.use('/api', jobRequestsRoute);
 app.use('/api/user', bookingRoutes);
 

@@ -1,10 +1,12 @@
 const admin = require('firebase-admin');
 const serviceAccount = require('./firebaseKey.json');
+const { GeoFire } = require("geofire");
 
 // Get bucket name from service account or environment
 const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${serviceAccount.project_id}.appspot.com`;
 // Firebase Realtime Database URL
 const databaseURL = process.env.FIREBASE_DATABASE_URL || "https://fixme-2025-default-rtdb.firebaseio.com/";
+const geoDatabaseURL = process.env.FIREBASE_GEO_DATABASE_URL || "https://fixme-2025-geofire.firebaseio.com/";
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -12,9 +14,17 @@ admin.initializeApp({
   databaseURL: databaseURL // Realtime Database URL
 });
 
-const db = admin.firestore();
-const rtdb = admin.database();
-const bucket = admin.storage().bucket();
+// Secondary app for GeoFire database
+const geoApp = admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: geoDatabaseURL
+}, "geoApp");
+
+const db = defaultApp.firestore();
+const rtdb = defaultApp.database();
+const bucket = defaultApp.storage().bucket();
+
+const geoDb = geoApp.database();
 
 // For development: Use emulator if needed
 if (process.env.NODE_ENV === 'development') {
@@ -46,4 +56,4 @@ async function testFirebaseConnection() {
 // Test connection on startup
 testFirebaseConnection();
 
-module.exports = { admin, db, rtdb, bucket };
+module.exports = { admin, db, rtdb, bucket, geoDb };
