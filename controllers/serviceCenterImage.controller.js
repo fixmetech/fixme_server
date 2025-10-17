@@ -6,9 +6,7 @@ const {
   generateFileName,
 } = require('../utils/upload.util');
 
-// =========================
 // Upload Service Center Image
-// =========================
 const uploadServiceCenterImage = async (req, res) => {
   try {
     const { servicecenterid } = req.params;
@@ -18,7 +16,7 @@ const uploadServiceCenterImage = async (req, res) => {
     if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
     const fileName = generateFileName(file.originalname, 'serviceCenter-');
-    const folderPath = `serviceCenters/profiles/${servicecenterid}`;
+    const folderPath = `serviceCenter/profiles/${servicecenterid}`;
 
     const downloadURL = await uploadToFirebaseStorage(file, folderPath, fileName);
 
@@ -37,9 +35,7 @@ const uploadServiceCenterImage = async (req, res) => {
   }
 };
 
-// =========================
 // Edit Service Center Image
-// =========================
 const editServiceCenterImage = async (req, res) => {
   try {
     const { servicecenterid } = req.params;
@@ -52,7 +48,7 @@ const editServiceCenterImage = async (req, res) => {
     await deleteFromFirebaseStorage(oldFilePath);
 
     const fileName = generateFileName(newFile.originalname, 'serviceCenter-');
-    const folderPath = `serviceCenters/${servicecenterid}/profiles`;
+    const folderPath = `serviceCenter/${servicecenterid}/profiles`;
     const downloadURL = await uploadToFirebaseStorage(newFile, folderPath, fileName);
 
     const docRef = db.collection('serviceCenters').doc(servicecenterid);
@@ -73,9 +69,7 @@ const editServiceCenterImage = async (req, res) => {
   }
 };
 
-// =========================
 // Delete Service Center Image
-// =========================
 const deleteServiceCenterImage = async (req, res) => {
   try {
     const { servicecenterid } = req.params;
@@ -99,9 +93,7 @@ const deleteServiceCenterImage = async (req, res) => {
   }
 };
 
-// =========================
 // Get Functions
-// =========================
 const getServiceCenterImages = async (req, res) => {
   try {
     const { servicecenterid } = req.params;

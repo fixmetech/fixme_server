@@ -187,8 +187,10 @@ const editProfile = async (req, res) => {
 // Add Appointment
 const addAppointment = async (req, res) => {
   try {
+    console.log('det',req.body);
+    const serviceName = req.body.serviceName;
     // Validate request body
-    const { error, value } = appointmentSchema.validate(req.body);
+    const { error, value } = appointmentSchema.validate(req.body, { allowUnknown: true });
     if (error)
       return res
         .status(400)
@@ -229,8 +231,13 @@ const addAppointment = async (req, res) => {
     }
 
     // Create new appointment
-    const newAppointment = new Appointment(value);
+    const newAppointment = new Appointment({
+      ...value,
+      
+    });
     const plainAppointment = JSON.parse(JSON.stringify(newAppointment));
+
+    console.log('a',plainAppointment);
 
     const docRef = await appointmentsCollection.add({
       ...plainAppointment,
@@ -333,9 +340,7 @@ const deleteAppointment = async (req, res) => {
     }
 
     // Check if appointment exists
-    const appointmentRef = db
-      .collection("appointments") // or serviceCenterCollection.collection('appointments')
-      .doc(id);
+    const appointmentRef = db.collection("appointments").doc(id);
 
     const docSnap = await appointmentRef.get();
 
@@ -435,6 +440,8 @@ const editTask = async (req, res) => {
   try {
     const { servicecenterid, id } = req.params; // now extracting both
     const updateData = { ...req.body, updatedAt: new Date(), servicecenterid };
+
+    console.log(updateData);
 
     const { error, value } = calendarTaskSchema.validate(updateData);
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
@@ -569,11 +576,14 @@ const viewAppointmentsInCalendar = async (req, res) => {
 
 // Add Service
 const addService = async (req, res) => {
-  const { servicecenterid } = req.params;
+  try 
+  {
+    const { servicecenterid } = req.params;
 
-  try {
-    // 🔍 Check if service center exists
-    const serviceCenterRef = db.collection("serviceCenters").doc(servicecenterid);
+    console.log('ser',servicecenterid);
+
+    //Check if service center exists
+    const serviceCenterRef = serviceCenterCollection.doc(servicecenterid);
     const serviceCenterDoc = await serviceCenterRef.get();
 
     if (!serviceCenterDoc.exists) {
@@ -611,16 +621,9 @@ const addService = async (req, res) => {
       );
     }
 
-    const data = {
-      serviceName: req.body.serviceName,
-      serviceCategory: req.body.serviceCategory,
-      price: Number(req.body.price),
-      duration: Number(req.body.duration),
-      description: req.body.description,
-      tags,
-      servicecenterid,
-      image: imageUrl || undefined
-    };
+    let data = { ...req.body, updatedAt: new Date(), tags };
+
+    console.log(data);
 
     const { error, value } = serviceSchema.validate(data);
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
