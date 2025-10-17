@@ -3,7 +3,7 @@ const { verifyFirebaseToken } = require("../utils/middleware/auth.middleware");
 const router = express.Router();
 const {
   findNearestTechnician,
-} = require("../controllers/job.controller");
+} = require("../controllers/rjob.controller");
 
 router.post("/findNearestTechnician", findNearestTechnician);
 //router.put("/cancel/:jobId", cancelJob);
