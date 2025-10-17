@@ -37,7 +37,7 @@ const bookingSchema = Joi.object({
         'string.empty': 'Scheduled time is required'
     }),
     userDetails: Joi.object({
-        name: Joi.string().min(2).max(100).required().messages({
+        name: Joi.string().min(2).max(100).messages({
             'string.empty': 'User name is required',
             'string.min': 'User name must be at least 2 characters',
             'string.max': 'User name must not exceed 100 characters'
@@ -55,7 +55,7 @@ const bookingSchema = Joi.object({
             'string.min': 'Address must be at least 10 characters',
             'string.max': 'Address must not exceed 200 characters'
         })
-    }).required(),
+    }),
     technicianDetails: Joi.object({
         name: Joi.string().min(2).max(100).required().messages({
             'string.empty': 'Technician name is required',
@@ -71,6 +71,22 @@ const bookingSchema = Joi.object({
             'string.empty': 'Phone number is required'
         })
     }).required(),
+    vehicleDetails: Joi.object({
+        id: Joi.string().optional(),
+        plateNumber: Joi.string().optional(),
+        make: Joi.string().optional(),
+        model: Joi.string().optional(),
+        year: Joi.string().optional(),
+        color: Joi.string().optional(),
+        vehicleType: Joi.string().optional(),
+        isDefault: Joi.boolean().optional(),
+        fuelType: Joi.string().optional(),
+        transmission: Joi.string().optional(),
+        engineCapacity: Joi.string().optional(),
+        mileage: Joi.string().optional(),
+        imageUrl: Joi.string().optional().allow(''),
+        owner: Joi.string().optional().allow(null)
+    }).optional().allow(null),
     createdAt: Joi.date().default(() => new Date()).messages({
         'date.base': 'Created at must be a valid date'
     }),
