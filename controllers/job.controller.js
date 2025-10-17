@@ -8,6 +8,15 @@ const {
 const geofire = require("geofire-common");
 const collection = db.collection("jobRequests");
 
+
+// Error handler wrapper
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch((err) => {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: err.message });
+  });
+};
+
 /**
  * GET /job-requests/:jobRequestId
  * Returns a normalized job request document.
@@ -516,13 +525,37 @@ exports.saveReview = async (req, res) => {
   }
 };
 
-// Error handler wrapper
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch((err) => {
-    const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({ error: err.message });
+exports.getJobActivitiesByCustomerId = asyncHandler(async (req, res) => {
+  const { customerId } = req.params;
+
+  if (!customerId) {
+    return res.status(400).json({ error: "Missing customerId" });
+  }
+  console.log("customerId:", customerId);
+
+  const jobRequestsSnapshot = await db
+    .collection("jobRequests")
+    .where("customerId", "==", customerId)
+    .get();
+
+
+
+  const jobRequests = [];
+  jobRequestsSnapshot.forEach((doc) => {
+    jobRequests.push({ jobId: doc.id, ...doc.data() });
   });
-};
+
+    console.log(jobRequests);
+
+  console.log("step 03");
+
+  res.status(200).json({
+    success: true,
+    message: `Found ${jobRequests.length} job activities for customerId: ${customerId}`,
+    data: jobRequests,
+    count: jobRequests.length,
+  });
+});
 
 exports.findNearestTechnician = asyncHandler(async (req, res) => {
   const jobRequestData = req.body;
