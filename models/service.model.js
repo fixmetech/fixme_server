@@ -18,7 +18,16 @@ class ServiceCenter {
     selectedPlan,
     state,
     yearsInBusiness,
-    zipCode
+    zipCode,
+    // New fields for search functionality
+    rating,
+    totalServices,
+    location,
+    workingHours,
+    languages,
+    specialServices,
+    images,
+    features
   }) {
     this.address = address;
     this.agreeToFees = agreeToFees;
@@ -46,6 +55,34 @@ class ServiceCenter {
     this.state = state;
     this.yearsInBusiness = yearsInBusiness;
     this.zipCode = zipCode;
+    
+    // New fields for search functionality
+    this.rating = rating || 4.0 + Math.random() * 1; // Default random rating for demo
+    this.totalServices = totalServices || Math.floor(Math.random() * 500) + 100;
+    this.location = location || {
+      latitude: null,
+      longitude: null,
+      address: address,
+      city: city,
+      state: state,
+      zipCode: zipCode
+    };
+    this.workingHours = workingHours || {
+      monday: { start: '08:00', end: '18:00', closed: false },
+      tuesday: { start: '08:00', end: '18:00', closed: false },
+      wednesday: { start: '08:00', end: '18:00', closed: false },
+      thursday: { start: '08:00', end: '18:00', closed: false },
+      friday: { start: '08:00', end: '18:00', closed: false },
+      saturday: { start: '08:00', end: '16:00', closed: false },
+      sunday: { start: '09:00', end: '15:00', closed: false }
+    };
+    this.languages = languages || ['English', 'Sinhala'];
+    this.specialServices = specialServices || [];
+    this.images = images || [];
+    this.features = features || ['Parking Available', 'Air Conditioned', 'Customer Waiting Area'];
+    this.isActive = true;
+    this.verificationStatus = 'verified';
+    this.tags = [businessType, ...(specialServices || [])];
   }
 }
 
