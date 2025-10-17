@@ -61,7 +61,7 @@ const serviceSchema = Joi.object({
   serviceCategory: Joi.string().min(2).max(50).required().messages({
     'string.empty': 'Service category is required'
   }),
-  price: Joi.number().positive().required().messages({
+  price: Joi.number().min(0).required().messages({
     'number.base': 'Price must be a number',
     'number.positive': 'Price must be a positive number',
     'any.required': 'Price is required'
@@ -72,10 +72,9 @@ const serviceSchema = Joi.object({
     'number.positive': 'Duration must be positive',
     'any.required': 'Duration is required'
   }),
-  description: Joi.string().max(200).message({
+  description: Joi.string().max(200).optional().messages({
     'string.max': 'Description must be at most 200 characters'
   }),
-
   image: Joi.string().uri().optional().messages({
     'string.uri': 'Image must be a valid URL'
   }),

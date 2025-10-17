@@ -5,6 +5,7 @@ class scAppointment {
       userid, 
       serviceid,
       phoneNumber,
+      serviceName,
       date,
       time,
       duration, 
@@ -17,6 +18,7 @@ class scAppointment {
       this.userid = userid;
       this.serviceid = serviceid;
       this.phoneNumber = phoneNumber;
+      this.serviceName = serviceName;
       this.date = date;
       this.time = time;
       this.duration = duration;
