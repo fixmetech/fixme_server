@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon server.js",
-    "test-moderator": "node test-moderator-api.js"
+    "test-moderator": "node test-moderator-api.js",
+    "test-complaint": "node test-complaint-api.js"
   },
   "keywords": [],
   "author": "",

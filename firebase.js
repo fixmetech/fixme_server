@@ -8,9 +8,7 @@ const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || `${serviceAccount.p
 const databaseURL = process.env.FIREBASE_DATABASE_URL || "https://fixme-2025-default-rtdb.firebaseio.com/";
 const geoDatabaseURL = process.env.FIREBASE_GEO_DATABASE_URL || "https://fixme-2025-geofire.firebaseio.com/";
 
-console.log('🔥 Initializing Firebase with bucket:', storageBucket);
-
-const defaultApp = admin.initializeApp({
+admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   storageBucket: storageBucket,
   databaseURL: databaseURL // Realtime Database URL
@@ -42,19 +40,16 @@ async function testFirebaseConnection() {
   try {
     // Test Firestore
     await db.collection('test').limit(1).get();
-    console.log('✅ Firestore connected successfully');
     
     // Test Storage
     const [bucketExists] = await bucket.exists();
-    if (bucketExists) {
-      console.log('✅ Storage bucket exists and is accessible');
-    } else {
-      console.log('❌ Storage bucket does not exist. Please enable Firebase Storage in console.');
+    if (!bucketExists) {
+      console.log('Warning: Firebase Storage bucket does not exist. Please enable Firebase Storage in console.');
     }
     
   } catch (error) {
-    console.error('❌ Firebase connection failed:', error.message);
-    console.log('💡 Make sure Firebase Storage is enabled in your Firebase Console');
+    console.error('Firebase connection failed:', error.message);
+    console.log('Make sure Firebase Storage is enabled in your Firebase Console');
   }
 }
 

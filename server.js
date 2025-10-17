@@ -15,14 +15,28 @@ const customerRoutes = require('./routes/customer.route');
 const chatRoutes = require('./routes/chat.route');
 const utilityRoutes = require('./routes/utility.route');
 const jobRoutes = require('./routes/rjob.route');
+const searchRoutes = require('./routes/search.route');
 
-app.use('/api/services', serviceRoutes);
+const complaintRoutes = require('./routes/complaint.route.simple');
+
+const jobRequestsRoute = require('./routes/job.route');
+const bookingRoutes = require('./routes/booking.router');
+
+
+app.use('/api/service_center', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
 app.use('/api/moderators', moderatorRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/search', searchRoutes);
+
+app.use('/api/complaints', complaintRoutes);
+
 app.use('/api/customers', customerRoutes);
 app.use('/api/utility', utilityRoutes);
 app.use('/api/rjobs', jobRoutes);
+app.use('/api', jobRequestsRoute);
+app.use('/api/user', bookingRoutes);
+
 
 // server start
 const PORT = process.env.PORT || 3000;
