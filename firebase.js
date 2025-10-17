@@ -20,9 +20,9 @@ const geoApp = admin.initializeApp({
   databaseURL: geoDatabaseURL
 }, "geoApp");
 
-const db = defaultApp.firestore();
-const rtdb = defaultApp.database();
-const bucket = defaultApp.storage().bucket();
+const db = admin.firestore();
+const rtdb = admin.database();
+const bucket = admin.storage().bucket();
 
 const geoDb = geoApp.database();
 
