@@ -258,13 +258,36 @@ const getRegistrationDetails = async (req, res) => {
     }
     
     const data = doc.data();
+    
+    // Get interview information for this registration
+    const { checkPendingInterviews } = require('./interview.controller');
+    const interviewSnapshot = await db.collection('interviews')
+      .where('registrationId', '==', id)
+      .get();
+    
+    const allInterviews = interviewSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      scheduledAt: doc.data().scheduledAt?.toDate(),
+      completedAt: doc.data().completedAt?.toDate(),
+      cancelledAt: doc.data().cancelledAt?.toDate(),
+      updatedAt: doc.data().updatedAt?.toDate()
+    }));
+    
+    // Sort by scheduledAt descending
+    const interviews = allInterviews.sort((a, b) => b.scheduledAt - a.scheduledAt);
+    
+    const hasPendingInterview = await checkPendingInterviews(id);
+    
     res.json({
       success: true,
       data: { 
         id: doc.id, 
         ...data,
         registeredAt: data.registeredAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate()
+        updatedAt: data.updatedAt?.toDate(),
+        interviews,
+        hasPendingInterview
       }
     });
   } catch (err) {
@@ -296,6 +319,18 @@ const reviewTechnicianRegistration = async (req, res) => {
       return res.status(404).json({ 
         success: false,
         error: 'Registration not found' 
+      });
+    }
+
+    // Check for pending interviews before allowing final decision
+    const { checkPendingInterviews } = require('./interview.controller');
+    const hasPendingInterview = await checkPendingInterviews(id);
+    
+    if (hasPendingInterview && (value.status === 'approved' || value.status === 'rejected')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot make final decision while there are pending interviews. Please complete or cancel the interview first.',
+        code: 'PENDING_INTERVIEW_BLOCK'
       });
     }
 
