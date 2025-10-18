@@ -10,26 +10,29 @@ const {
     getJobStatus,
     finishJob,
     setFinishPin,
+    setStartPin,
     getFinishPin,
     verifyFinishPin,
     saveReview,
+    findNearestTechnician,
  } = require('../controllers/job.controller');
 
 // Optional auth: if you want to require Firebase ID token from client,
 // plug your existing middleware here.
 // const { verifyAuth } = require('../utils/middleware/auth.middleware');
 
-// GET /job-requests/:jobRequestId
-router.get('/job-requests/:jobRequestId', /* verifyAuth, */ getJobRequestById);
-router.post('/job-requests/:jobRequestId/confirm-pin', /* verifyAuth, */ confirmPin);
-router.post('/jobs/:jobId/estimate', /* verifyAuth, */ submitEstimate);
-router.get('/jobs/:jobId/estimate-status', /* verifyAuth, */ getEstimateStatus);
-router.post('/jobs/:jobId/estimate-approval', /* verifyAuth, */ approveEstimateDecision);
-router.get('/jobs/:jobId/status', /* verifyAuth, */ getJobStatus);
-router.post('/jobs/:jobId/finish', /* verifyAuth, */ finishJob);
-router.post('/jobs/:jobId/finish-pin', /* verifyAuth, */ setFinishPin);
-router.get('/jobs/:jobId/finish-pin', /* verifyAuth, */ getFinishPin);
-router.post('/jobs/:jobId/verify-finish-pin', /* verifyAuth, */ verifyFinishPin);
-router.post('/jobs/:jobId/review', /* verifyAuth, */ saveReview);
+router.post('/:jobId/start-pin', /* verifyAuth, */ setStartPin);
+router.get('/requests/:jobRequestId', /* verifyAuth, */ getJobRequestById);
+router.post('/requests/:jobRequestId/confirm-pin', /* verifyAuth, */ confirmPin);
+router.post('/:jobId/estimate', /* verifyAuth, */ submitEstimate);
+router.get('/:jobId/estimate-status', /* verifyAuth, */ getEstimateStatus);
+router.post('/:jobId/estimate-approval', /* verifyAuth, */ approveEstimateDecision);
+router.get('/:jobId/status', /* verifyAuth, */ getJobStatus);
+router.post('/:jobId/finish', /* verifyAuth, */ finishJob);
+router.post('/:jobId/finish-pin', /* verifyAuth, */ setFinishPin);
+router.get('/:jobId/finish-pin', /* verifyAuth, */ getFinishPin);
+router.post('/:jobId/verify-finish-pin', /* verifyAuth, */ verifyFinishPin);
+router.post('/:jobId/review', /* verifyAuth, */ saveReview);
+router.post("/findNearestTechnician", findNearestTechnician);
 
 module.exports = router;
