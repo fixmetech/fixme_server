@@ -113,14 +113,26 @@ const searchServiceCenters = async (req, res) => {
     } = req.query;
 
     let serviceCenterQuery = serviceCentersCollection;
-
-    // Filter by business type if provided
-    if (category && category !== '') {
-      serviceCenterQuery = serviceCenterQuery.where('businessType', '==', category);
-    }
-
+    
+    // Get all service centers first
     const snapshot = await serviceCenterQuery.get();
     let serviceCenters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Filter by category if provided (search in availableServices array)
+    if (category && category !== '') {
+      const categoryMapping = getServiceCenterCategoryMapping(category);
+      if (categoryMapping.length > 0) {
+        serviceCenters = serviceCenters.filter(center => {
+          const availableServices = center.availableServices || [];
+          return categoryMapping.some(mappedService =>
+            availableServices.some(service => 
+              service.toLowerCase().includes(mappedService.toLowerCase()) ||
+              mappedService.toLowerCase().includes(service.toLowerCase())
+            )
+          );
+        });
+      }
+    }
 
     // Apply text search if query provided
     if (query && query.trim() !== '') {
@@ -533,6 +545,15 @@ const applySorting = (technicians, sort) => {
         const distanceB = Math.floor(Math.random() * 20) + 5;
         return distanceA - distanceB;
       });
+    case 'recent':
+      return technicians.sort((a, b) => {
+        // Sort by createdAt date if available, otherwise by ID (newer entries have newer IDs)
+        if (a.createdAt && b.createdAt) {
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        }
+        // Fallback: use document ID for ordering (Firestore IDs are time-based)
+        return b.id.localeCompare(a.id);
+      });
     default:
       return technicians.sort((a, b) => {
         const ratingA = a.rating || 4.0 + Math.random() * 1;
@@ -646,6 +667,22 @@ const getServiceCenterCategoryImage = (category) => {
     'Computers': 'assets/images/service_center/computers.png'
   };
   return categoryImages[category] || 'assets/images/service_center/service.png';
+};
+
+// Maps frontend service category names to backend availableServices values
+const getServiceCenterCategoryMapping = (category) => {
+  const categoryMappings = {
+    'Car Wash': ['car wash', 'vehicle wash', 'auto wash'],
+    'Car Repair': ['car repair', 'auto repair', 'vehicle repair', 'automotive'],
+    'Electronics': ['electronics', 'electronics repair', 'electronic'],
+    'Pest Control': ['pest control', 'pest', 'extermination'],
+    'AC Service': ['ac service', 'air conditioning', 'hvac', 'cooling'],
+    'Phone Repair': ['phone repair', 'mobile repair', 'smartphone repair', 'cell phone'],
+    'Appliances': ['appliances', 'appliance repair', 'home appliances'],
+    'Computers': ['computers', 'computer repair', 'pc repair', 'laptop repair']
+  };
+  
+  return categoryMappings[category] || [category.toLowerCase()];
 };
 
 // Unified search across all categories
