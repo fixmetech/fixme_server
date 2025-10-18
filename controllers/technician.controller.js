@@ -26,6 +26,23 @@ const registerTechnician = async (req, res) => {
       req.body.serviceRadius = parseFloat(req.body.serviceRadius);
     }
 
+    // Convert experience to number if it's a string
+    if (req.body.experience && typeof req.body.experience === 'string') {
+      req.body.experience = parseInt(req.body.experience);
+    }
+
+    // Parse languages if it's a JSON string
+    if (req.body.languages && typeof req.body.languages === 'string') {
+      try {
+        req.body.languages = JSON.parse(req.body.languages);
+      } catch (e) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid languages format' 
+        });
+      }
+    }
+
     // Parse date of birth if provided
     if (req.body.dateOfBirth && typeof req.body.dateOfBirth === 'string') {
       req.body.dateOfBirth = new Date(req.body.dateOfBirth);
@@ -217,6 +234,8 @@ const registerTechnician = async (req, res) => {
       dateOfBirth: technician.dateOfBirth,
       gender: technician.gender,
       nicNumber: technician.nicNumber,
+      experience: technician.experienceYears,
+      language: technician.languages,
       serviceCategory: technician.serviceCategory,
       specializations: technician.specializations,
       serviceDescription: technician.serviceDescription,

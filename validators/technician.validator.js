@@ -33,6 +33,20 @@ const technicianRegistrationSchema = Joi.object({
   nicNumber: Joi.string().pattern(/^[0-9]{9}[vVxX]$|^[0-9]{12}$/).optional().messages({
     'string.pattern.base': 'Enter a valid Sri Lankan NIC number'
   }),
+
+  experience: Joi.number().integer().min(0).max(50).optional().messages({
+    'number.base': 'Experience must be a number',
+    'number.integer': 'Experience must be a whole number',
+    'number.min': 'Experience cannot be negative',
+    'number.max': 'Experience cannot exceed 50 years'
+  }),
+
+  languages: Joi.array().items(
+    Joi.string().valid('Sinhala', 'English', 'Tamil')
+  ).min(1).optional().messages({
+    'array.min': 'At least one language must be selected',
+    'any.only': 'Language must be Sinhala, English, or Tamil'
+  }),
   
   serviceCategory: Joi.string().valid('Vehicle Services', 'Home Services').required().messages({
     'any.only': 'Service category must be either Vehicle Services or Home Services',
