@@ -21,7 +21,7 @@ const complaintRoutes = require('./routes/complaint.route.simple');
 
 const jobRequestsRoute = require('./routes/job.route');
 const bookingRoutes = require('./routes/booking.router');
-
+const appointmentRoutes = require('./routes/appointment.route');
 
 app.use('/api/service_center', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
@@ -37,7 +37,7 @@ app.use('/api', jobRequestsRoute);
 app.use('/api/utility', utilityRoutes);
 app.use('/api/jobs', jobRequestsRoute);
 app.use('/api/user', bookingRoutes);
-
+app.use('/api/appointments', appointmentRoutes);
 
 // server start
 const PORT = process.env.PORT || 3000;
