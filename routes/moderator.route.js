@@ -15,6 +15,9 @@ const {
   addReviewNotes
 } = require('../controllers/moderator.controller');
 
+// Import interview routes
+const interviewRoutes = require('./interview.route');
+
 // Moderator authentication routes
 router.post('/register', registerModerator); // Admin only - should add auth middleware
 router.post('/login', loginModerator);
@@ -38,6 +41,9 @@ router.get('/documents/:technicianId/:documentType/verify', verifyDocument);
 
 // Review management routes
 router.post('/registrations/:id/notes', addReviewNotes);
+
+// Interview management routes
+router.use('/interviews', interviewRoutes);
 
 // Error handling middleware
 router.use((error, req, res, next) => {
