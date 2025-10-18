@@ -452,7 +452,7 @@ exports.verifyFinishPin = async (req, res) => {
 
     const nowIso = new Date().toISOString();
     await ref.update({
-      status: "Completed", // <-- final status (rename if you prefer)
+      status: "completed", // <-- final status (rename if you prefer)
       customerConfirmedAt: nowIso,
       updatedAt: nowIso,
     });
