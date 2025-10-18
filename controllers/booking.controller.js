@@ -227,8 +227,57 @@ function convertTo12HourFormat(time24) {
     }
 }
 
+const getScheduledBookingsByCustomerId = async (req, res) => {
+    try {
+        const { customerId } = req.params;
+        console.log('Fetching scheduled bookings for customer:', customerId);
+        
+        if (!customerId) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Customer ID is required' 
+            });
+        }
+
+        const snapshot = await db.collection('bookings')
+            .where('userId', '==', customerId)
+            .get();
+            
+        const bookings = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            bookings.push({ 
+                id: doc.id, 
+                ...data,
+                // Convert Firestore timestamps to ISO strings for frontend
+                createdAt: data.createdAt?.toDate()?.toISOString(),
+                updatedAt: data.updatedAt?.toDate()?.toISOString(),
+                scheduledDate: data.scheduledDate?.toDate ? data.scheduledDate.toDate().toISOString() : data.scheduledDate,
+                bookingDate: data.bookingDate?.toDate ? data.bookingDate.toDate().toISOString() : data.bookingDate
+            });
+        });
+
+
+        
+        //console.log(`Found ${bookings.length} scheduled bookings for customer ${customerId}`);
+        res.status(200).json({
+            success: true,
+            data: bookings,
+            total: bookings.length
+        });
+        
+    } catch (err) {
+        console.error('Error fetching scheduled bookings:', err);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch scheduled bookings: ' + err.message 
+        });
+    }
+};
+
 module.exports = {
     createBooking,
     getBookingsByTechnician,
-    getAvailableTimeSlots
+    getAvailableTimeSlots,
+    getScheduledBookingsByCustomerId
 };

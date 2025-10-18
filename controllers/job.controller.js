@@ -730,7 +730,7 @@ exports.cancelJobRequest = async (req, res) => {
   }
 
   // Update the job request status 
-  await jobRef.update({ status: "Cancelled", updatedAt: new Date().toISOString() });
+  await jobRef.update({ status: "cancelled", updatedAt: new Date().toISOString() });
 
   return res.status(200).json({ 
     success: true,
