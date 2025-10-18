@@ -63,7 +63,7 @@ const createBooking = async (req, res) => {
 const getBookingsByTechnician = async (req, res) => {
     try {
         const { technicianId } = req.params;
-        console.log('Fetching bookings for technician:', technicianId);
+       
         
         if (!technicianId) {
             return res.status(400).json({ 
