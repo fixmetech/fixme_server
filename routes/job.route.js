@@ -16,6 +16,7 @@ const {
     saveReview,
     findNearestTechnician,
     getJobActivitiesByCustomerId,
+    cancelJobRequest,
  } = require('../controllers/job.controller');
 
 // Optional auth: if you want to require Firebase ID token from client,
@@ -36,5 +37,7 @@ router.get('/:jobId/finish-pin', /* verifyAuth, */ getFinishPin);
 router.post('/:jobId/verify-finish-pin', /* verifyAuth, */ verifyFinishPin);
 router.post('/:jobId/review', /* verifyAuth, */ saveReview);
 router.post("/findNearestTechnician", findNearestTechnician);
+router.post("/cancel/:jobId", cancelJobRequest);
+
 
 module.exports = router;

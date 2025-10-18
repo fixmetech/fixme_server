@@ -714,3 +714,25 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
     },
   });
 });
+
+exports.cancelJobRequest = async (req, res) => {
+  const { jobId } = req.params;
+
+  if (!jobId) {
+    return res.status(400).json({ error: "Missing jobId parameter" });
+  }
+
+  const jobRef = db.collection("jobRequests").doc(jobId);
+  const jobSnap = await jobRef.get();
+
+  if (!jobSnap.exists) {
+    return res.status(404).json({ error: "Job request not found" });
+  }
+
+  // Update the job request status 
+  await jobRef.update({ status: "Cancelled", updatedAt: new Date().toISOString() });
+
+  return res.status(200).json({ 
+    success: true,
+    message: "Job request cancelled successfully" });
+};
