@@ -8,6 +8,7 @@ const techniciansCollection = db.collection('technicians');
 const serviceCentersCollection = db.collection('serviceCenters');
 const servicesCollection = db.collection('services');
 const towingServicesCollection = db.collection(TOWING_COLLECTION);
+const technicianFeedbackCollection = db.collection('technicianFeedback');
 
 // Search technicians with filters
 const searchTechnicians = async (req, res) => {
@@ -15,12 +16,43 @@ const searchTechnicians = async (req, res) => {
     const {
       query,
       category,
-      filters = {},
       location,
       page = 1,
       limit = 10,
-      sort = 'rating'
+      sort = 'rating',
+      // Filter parameters
+      rating,
+      ratingRange,
+      priceRange,
+      price,
+      distance,
+      language,
+      languages,
+      visitingFee,
+      feeRange,
+      serviceArea,
+      highlyRated,
+      availability,
+      experience
     } = req.query;
+
+
+
+    // Build filters object from query parameters
+    const filters = {};
+    if (rating) filters.rating = rating;
+    if (ratingRange) filters.ratingRange = ratingRange;
+    if (priceRange) filters.priceRange = priceRange;
+    if (price) filters.price = price;
+    if (distance) filters.distance = distance;
+    if (language) filters.language = language;
+    if (languages) filters.languages = Array.isArray(languages) ? languages : [languages];
+    if (visitingFee) filters.visitingFee = visitingFee;
+    if (feeRange) filters.feeRange = feeRange;
+    if (serviceArea) filters.serviceArea = serviceArea;
+    if (highlyRated) filters.highlyRated = highlyRated;
+    if (availability) filters.availability = availability;
+    if (experience) filters.experience = experience;
 
     // Get all approved and active technicians
     const technicianQuery = techniciansCollection
@@ -71,23 +103,39 @@ const searchTechnicians = async (req, res) => {
       });
     }
 
-    // Apply additional filters
-    technicians = applyFilters(technicians, filters);
+    // Calculate real ratings for all technicians BEFORE filtering
+    const techniciansWithRealRatings = await Promise.all(
+      technicians.map(async (technician) => {
+        const realRating = await getTechnicianAverageRating(technician.id);
+        const feedbackCount = await getTechnicianFeedbackCount(technician.id);
+        return {
+          ...technician,
+          rating: realRating,
+          totalFeedback: feedbackCount
+        };
+      })
+    );
     
-    // Apply sorting
-    technicians = applySorting(technicians, sort);
+    // Apply additional filters AFTER calculating real ratings
+    const filteredTechnicians = applyFilters(techniciansWithRealRatings, filters);
+    
+    // Parse user location if provided
+    const userLocation = location ? JSON.parse(location) : null;
+    
+    // Apply sorting with real ratings and user location
+    const sortedTechnicians = applySorting(filteredTechnicians, sort, userLocation);
 
     // Apply pagination
     const startIndex = (page - 1) * limit;
-    const paginatedResults = technicians.slice(startIndex, startIndex + parseInt(limit));
+    const paginatedResults = sortedTechnicians.slice(startIndex, startIndex + parseInt(limit));
 
     res.json({
       success: true,
       data: paginatedResults,
-      total: technicians.length,
+      total: sortedTechnicians.length,
       page: parseInt(page),
-      totalPages: Math.ceil(technicians.length / limit),
-      filters: generateFilterSummary(technicians)
+      totalPages: Math.ceil(sortedTechnicians.length / limit),
+      filters: generateFilterSummary(sortedTechnicians)
     });
 
   } catch (error) {
@@ -329,14 +377,14 @@ const getFeaturedResults = async (req, res) => {
           id: doc.id,
           name: data.name,
           serviceCategory: data.serviceCategory,
-          rating: data.rating || 0, // Use actual rating or 0 if not set
-          totalJobs: data.totalJobs || 0, // Use actual job count or 0
-          visitingFee: data.visitingFee || 0, // Use actual fee or 0
+          rating: data.rating || 0,
+          totalJobs: data.totalJobs || 0,
+          visitingFee: data.visitingFee || 0,
           profilePictureUrl: data.profilePictureUrl,
           specializations: data.specializations || [],
           isAvailable: data.isActive,
-          distance: data.distance || 0, // Use actual distance or 0
-          responseTime: data.responseTime || 0, // Use actual response time or 0
+          distance: data.distance || 0,
+          responseTime: data.responseTime || 0,
           languages: data.languages || ['English'],
           hasOffer: section === 'offers'
         };
@@ -360,12 +408,12 @@ const getFeaturedResults = async (req, res) => {
           id: doc.id,
           businessName: data.businessName,
           businessType: data.businessType,
-          rating: data.rating || 0, // Use actual rating or 0
+          rating: data.rating || 0,
           address: data.address,
           city: data.city,
           phone: data.phone,
           description: data.description,
-          distance: data.distance || 0, // Use actual distance or 0
+          distance: data.distance || 0,
           hasOffer: section === 'offers'
         };
       });
@@ -456,120 +504,292 @@ const getSearchSuggestions = async (req, res) => {
   }
 };
 
+// Get technician average rating
+const getTechnicianRating = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+
+    if (!technicianId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician ID is required'
+      });
+    }
+
+    const averageRating = await getTechnicianAverageRating(technicianId);
+
+    res.json({
+      success: true,
+      data: {
+        technicianId,
+        averageRating,
+        totalFeedback: await getTechnicianFeedbackCount(technicianId)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get technician rating error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch technician rating'
+    });
+  }
+};
+
 // Helper functions for filtering and sorting
 const applyFilters = (technicians, filters) => {
+  if (!filters) return technicians;
+  
   let filtered = [...technicians];
 
-  // Price range filter
+  // Price range filter - using real visitingFee data
   if (filters.priceRange) {
-    const maxPrice = parseInt(filters.priceRange.replace(/\D/g, '')) || 1000;
+    const [min, max] = filters.priceRange.split('-').map(Number);
     filtered = filtered.filter(tech => {
-      const visitingFee = tech.visitingFee || 0; // Use actual fee or 0
+      const price = parseFloat(tech.visitingFee) || parseFloat(tech.price) || 0;
+      if (price === 0) return true;
+      return price >= min && price <= max;
+    });
+  }
+
+  // Simple price filter (for backward compatibility)
+  if (filters.price && !filters.priceRange) {
+    const maxPrice = parseInt(filters.price.replace(/\D/g, '')) || 1000;
+    filtered = filtered.filter(tech => {
+      const visitingFee = parseFloat(tech.visitingFee) || parseFloat(tech.price) || 0;
+      if (visitingFee === 0) return true;
       return visitingFee <= maxPrice;
     });
   }
 
-  // Rating filter
+  // Rating filter - 2-5 range with 0.5 intervals
   if (filters.rating) {
-    const minRating = parseFloat(filters.rating.replace(/\D/g, '')) / 10 || 4.5;
+    let minRating;
+    if (typeof filters.rating === 'string') {
+      minRating = parseFloat(filters.rating.replace(/\D/g, '')) / 10 || parseFloat(filters.rating) || 2.0;
+    } else {
+      minRating = parseFloat(filters.rating) || 2.0;
+    }
+    
+    minRating = Math.max(2.0, Math.min(5.0, minRating));
+    
     filtered = filtered.filter(tech => {
-      const rating = tech.rating || 0; // Use actual rating or 0
-      return rating >= minRating;
+      const rating = tech.rating || 0;
+      return rating >= minRating && rating <= 5.0;
     });
   }
 
-  // Distance filter
+  // Rating range filter (for slider with min/max)
+  if (filters.ratingRange) {
+    const [min, max] = filters.ratingRange.split('-').map(Number);
+    filtered = filtered.filter(tech => {
+      const rating = tech.rating || 2.0;
+      return rating >= Math.max(2.0, min) && rating <= Math.min(5.0, max);
+    });
+  }
+
+  // Distance filter - using real serviceRadius data
   if (filters.distance) {
-    const maxDistance = parseInt(filters.distance.replace(/\D/g, '')) || 10;
+    let maxDistance;
+    if (typeof filters.distance === 'string') {
+      maxDistance = parseInt(filters.distance.replace(/\D/g, '')) || 10;
+    } else {
+      maxDistance = parseFloat(filters.distance) || 10;
+    }
+    
     filtered = filtered.filter(tech => {
-      const distance = tech.distance || 0; // Use actual distance or 0
-      return distance <= maxDistance;
+      const serviceRadius = parseFloat(tech.serviceRadius) || 10;
+      return serviceRadius >= maxDistance;
     });
   }
 
-  // Language filter
+  // Language filter - array-based filtering
   if (filters.language) {
     filtered = filtered.filter(tech => {
-      const languages = tech.languages || ['English'];
-      return languages.includes(filters.language);
-    });
-  }
-
-  // Visiting fee range filter
-  if (filters.visitingFee) {
-    const feeRange = filters.visitingFee;
-    filtered = filtered.filter(tech => {
-      const visitingFee = tech.visitingFee || 0; // Use actual fee or 0
-      
-      if (feeRange.includes('Under Rs.59')) {
-        return visitingFee < 59;
-      } else if (feeRange.includes('Rs.59 - Rs.79')) {
-        return visitingFee >= 59 && visitingFee <= 79;
-      } else if (feeRange.includes('Rs.79 - Rs.99')) {
-        return visitingFee >= 79 && visitingFee <= 99;
-      } else if (feeRange.includes('Rs.99+')) {
-        return visitingFee >= 99;
+      const techLanguages = tech.languages || tech.language || ['English'];
+      if (Array.isArray(techLanguages)) {
+        return techLanguages.some(lang => 
+          lang.toLowerCase().includes(filters.language.toLowerCase())
+        );
       }
-      return true;
+      return techLanguages.toLowerCase().includes(filters.language.toLowerCase());
     });
   }
 
-  // Highly rated filter
-  if (filters.highlyRated === 'true') {
+  // Multiple languages filter
+  if (filters.languages && Array.isArray(filters.languages)) {
     filtered = filtered.filter(tech => {
-      const rating = tech.rating || 0; // Use actual rating or 0
+      const techLanguages = tech.languages || tech.language || ['English'];
+      if (!Array.isArray(techLanguages)) return false;
+      
+      return filters.languages.some(filterLang =>
+        techLanguages.some(techLang =>
+          techLang.toLowerCase().includes(filterLang.toLowerCase())
+        )
+      );
+    });
+  }
+
+  // Visiting fee range filter with proper ranges
+  if (filters.visitingFee) {
+    if (typeof filters.visitingFee === 'string') {
+      const feeRange = filters.visitingFee;
+      filtered = filtered.filter(tech => {
+        const visitingFee = parseFloat(tech.visitingFee) || 0;
+        
+        if (feeRange.includes('Under Rs.59') || feeRange.includes('under-59')) {
+          return visitingFee < 59;
+        } else if (feeRange.includes('Rs.59 - Rs.79') || feeRange.includes('59-79')) {
+          return visitingFee >= 59 && visitingFee <= 79;
+        } else if (feeRange.includes('Rs.79 - Rs.99') || feeRange.includes('79-99')) {
+          return visitingFee >= 79 && visitingFee <= 99;
+        } else if (feeRange.includes('Rs.99+') || feeRange.includes('99+')) {
+          return visitingFee >= 99;
+        }
+        return true;
+      });
+    } else {
+      // Numeric filter
+      const maxFee = parseFloat(filters.visitingFee);
+      filtered = filtered.filter(tech => {
+        const fee = parseFloat(tech.visitingFee) || 0;
+        return fee <= maxFee;
+      });
+    }
+  }
+
+  // Fee range filter (for slider)
+  if (filters.feeRange) {
+    const [min, max] = filters.feeRange.split('-').map(Number);
+    filtered = filtered.filter(tech => {
+      const fee = parseFloat(tech.visitingFee) || 0;
+      return fee >= min && fee <= max;
+    });
+  }
+
+  // Service area filter
+  if (filters.serviceArea) {
+    const minServiceArea = parseFloat(filters.serviceArea);
+    filtered = filtered.filter(tech => {
+      const serviceRadius = parseFloat(tech.serviceRadius) || 10;
+      return serviceRadius >= minServiceArea;
+    });
+  }
+
+  // Highly rated filter (4.5+ rating)
+  if (filters.highlyRated === 'true' || filters.highlyRated === true) {
+    filtered = filtered.filter(tech => {
+      const rating = tech.rating || 2.0;
       return rating >= 4.5;
+    });
+  }
+
+  // Availability filter
+  if (filters.availability === 'true' || filters.availability === true) {
+    filtered = filtered.filter(tech => {
+      return tech.isAvailable === true || tech.status === 'available';
+    });
+  }
+
+  // Experience filter
+  if (filters.experience) {
+    const minExperience = parseInt(filters.experience);
+    filtered = filtered.filter(tech => {
+      const experience = parseInt(tech.experience) || 0;
+      return experience >= minExperience;
     });
   }
 
   return filtered;
 };
 
-const applySorting = (technicians, sort) => {
+const applySorting = (technicians, sort, userLocation = null) => {
   switch (sort) {
     case 'rating':
       return technicians.sort((a, b) => {
-        const ratingA = a.rating || 0; // Use actual rating or 0
-        const ratingB = b.rating || 0; // Use actual rating or 0
+        const ratingA = a.rating || 2.0;
+        const ratingB = b.rating || 2.0;
         return ratingB - ratingA;
       });
+      
     case 'price':
+    case 'visitingFee':
       return technicians.sort((a, b) => {
-        const priceA = a.visitingFee || 0; // Use actual fee or 0
-        const priceB = b.visitingFee || 0; // Use actual fee or 0
+        const priceA = parseFloat(a.visitingFee) || 0;
+        const priceB = parseFloat(b.visitingFee) || 0;
         return priceA - priceB;
       });
+      
     case 'distance':
       return technicians.sort((a, b) => {
-        const distanceA = Math.floor(Math.random() * 20) + 5;
-        const distanceB = Math.floor(Math.random() * 20) + 5;
-        return distanceA - distanceB;
+        const serviceRadiusA = parseFloat(a.serviceRadius) || 10;
+        const serviceRadiusB = parseFloat(b.serviceRadius) || 10;
+        
+        if (userLocation && userLocation.latitude && userLocation.longitude) {
+          return serviceRadiusA - serviceRadiusB;
+        }
+        
+        return serviceRadiusA - serviceRadiusB;
       });
-    case 'recent':
+      
+    case 'serviceRadius':
       return technicians.sort((a, b) => {
-        // Sort by createdAt date if available, otherwise by ID (newer entries have newer IDs)
+        const radiusA = parseFloat(a.serviceRadius) || 10;
+        const radiusB = parseFloat(b.serviceRadius) || 10;
+        return radiusB - radiusA;
+      });
+      
+    case 'experience':
+      return technicians.sort((a, b) => {
+        const expA = parseInt(a.experience) || 0;
+        const expB = parseInt(b.experience) || 0;
+        return expB - expA;
+      });
+      
+    case 'recent':
+    case 'newest':
+      return technicians.sort((a, b) => {
         if (a.createdAt && b.createdAt) {
           return new Date(b.createdAt) - new Date(a.createdAt);
         }
-        // Fallback: use document ID for ordering (Firestore IDs are time-based)
         return b.id.localeCompare(a.id);
       });
+      
+    case 'availability':
+      return technicians.sort((a, b) => {
+        const availableA = a.isAvailable === true || a.status === 'available';
+        const availableB = b.isAvailable === true || b.status === 'available';
+        
+        if (availableA && !availableB) return -1;
+        if (!availableA && availableB) return 1;
+        
+        const ratingA = a.rating || 2.0;
+        const ratingB = b.rating || 2.0;
+        return ratingB - ratingA;
+      });
+      
+    case 'alphabetical':
+    case 'name':
+      return technicians.sort((a, b) => {
+        const nameA = (a.firstName || '') + ' ' + (a.lastName || '');
+        const nameB = (b.firstName || '') + ' ' + (b.lastName || '');
+        return nameA.localeCompare(nameB);
+      });
+      
     default:
       return technicians.sort((a, b) => {
-        const ratingA = a.rating || 4.0 + Math.random() * 1;
-        const ratingB = b.rating || 4.0 + Math.random() * 1;
+        const ratingA = a.rating || 2.0;
+        const ratingB = b.rating || 2.0;
         return ratingB - ratingA;
       });
   }
 };
 
 const applyServiceCenterFilters = (serviceCenters, filters) => {
-  // Similar filtering logic for service centers
   return serviceCenters;
 };
 
 const applyServiceCenterSorting = (serviceCenters, sort) => {
-  // Similar sorting logic for service centers
   return serviceCenters;
 };
 
@@ -585,12 +805,14 @@ const generateFilterSummary = (technicians) => {
     const techLanguages = tech.languages || ['English'];
     techLanguages.forEach(lang => languages.add(lang));
     
-    const rating = tech.rating || 4.0 + Math.random() * 1;
+    const rating = tech.rating || 0;
     avgRating += rating;
     
-    const price = tech.visitingFee || Math.floor(Math.random() * 1000) + 300;
-    priceRange.min = Math.min(priceRange.min, price);
-    priceRange.max = Math.max(priceRange.max, price);
+    const price = tech.visitingFee || 0;
+    if (price > 0) {
+      priceRange.min = Math.min(priceRange.min, price);
+      priceRange.max = Math.max(priceRange.max, price);
+    }
   });
 
   avgRating = technicians.length ? avgRating / technicians.length : 0;
@@ -607,11 +829,10 @@ const generateFilterSummary = (technicians) => {
 };
 
 const generateServiceCenterFilterSummary = (serviceCenters) => {
-  // Similar summary generation for service centers
   return {};
 };
 
-// Helper functions for category images (these would normally be stored in database)
+// Helper functions for category images
 const getCategoryImage = (category) => {
   const categoryImages = {
     'Plumbers': 'assets/images/plumbing.png',
@@ -651,7 +872,6 @@ const getCategoryImage = (category) => {
     }
   }
   
-  // Default fallback
   return 'assets/images/service_center.png';
 };
 
@@ -731,7 +951,7 @@ const searchAll = async (req, res) => {
           ...tech,
           type: 'technician',
           category: 'Technicians',
-          rating: tech.rating || 0, // Use actual rating or 0 if not set
+          rating: tech.rating || 0,
           matchScore: isEmptyQuery ? 1.0 : calculateMatchScore(query, tech.name, tech.serviceDescription, tech.specializations)
         }));
 
@@ -760,7 +980,7 @@ const searchAll = async (req, res) => {
           type: 'serviceCenter',
           category: 'Service Centers',
           name: center.businessName,
-          rating: center.rating || 0, // Use actual rating or 0 if not set
+          rating: center.rating || 0,
           matchScore: isEmptyQuery ? 1.0 : calculateMatchScore(query, center.businessName, center.description, [center.businessType])
         }));
 
@@ -791,7 +1011,7 @@ const searchAll = async (req, res) => {
           type: 'towing',
           category: 'Towing',
           name: towing.businessName,
-          rating: towing.rating || 0, // Use actual rating or 0 if not set
+          rating: towing.rating || 0,
           matchScore: isEmptyQuery ? 1.0 : calculateMatchScore(query, towing.businessName, towing.description, towing.serviceTypes)
         }));
 
@@ -932,7 +1152,6 @@ const saveSearchHistory = async (userId, query, category) => {
     
   } catch (error) {
     console.error('Error saving search history:', error);
-    // Don't throw error as search history is not critical
   }
 };
 
@@ -1087,7 +1306,7 @@ const calculateMatchScore = (query, name, description, tags = []) => {
   // Word matches
   const queryWords = queryLower.split(' ');
   queryWords.forEach(word => {
-    if (word.length > 2) { // Skip very short words
+    if (word.length > 2) {
       if (nameLower.includes(word)) score += 10;
       if (descLower.includes(word)) score += 5;
       if (tagsStr.includes(word)) score += 5;
@@ -1178,6 +1397,215 @@ const applyTowingSorting = (towingServices, sort) => {
   }
 };
 
+// Helper function to calculate average rating for a technician
+const getTechnicianAverageRating = async (technicianId) => {
+  try {
+    if (!technicianId) {
+      return 0;
+    }
+
+    // Query all feedback documents for the specific technician
+    const feedbackQuery = technicianFeedbackCollection
+      .where('technicianId', '==', technicianId);
+    
+    const feedbackSnapshot = await feedbackQuery.get();
+    
+    if (feedbackSnapshot.empty) {
+      return 0; // No feedback found, return 0 rating
+    }
+
+    let totalRating = 0;
+    let ratingCount = 0;
+
+    // Calculate sum of all ratings
+    feedbackSnapshot.forEach(doc => {
+      const feedback = doc.data();
+      const rating = feedback.rating;
+      
+      // Ensure rating is a valid number
+      if (typeof rating === 'number' && rating >= 0 && rating <= 5) {
+        totalRating += rating;
+        ratingCount++;
+      }
+    });
+
+    // Calculate and return average rating
+    if (ratingCount === 0) {
+      return 0;
+    }
+
+    const averageRating = totalRating / ratingCount;
+    
+    // Round to 1 decimal place
+    return Math.round(averageRating * 10) / 10;
+
+  } catch (error) {
+    console.error('Error calculating technician average rating:', error);
+    return 0; // Return 0 in case of error
+  }
+};
+
+// Helper function to get total feedback count for a technician
+const getTechnicianFeedbackCount = async (technicianId) => {
+  try {
+    if (!technicianId) {
+      return 0;
+    }
+
+    const feedbackQuery = technicianFeedbackCollection
+      .where('technicianId', '==', technicianId);
+    
+    const feedbackSnapshot = await feedbackQuery.get();
+    return feedbackSnapshot.size;
+
+  } catch (error) {
+    console.error('Error getting technician feedback count:', error);
+    return 0;
+  }
+};
+
+// Get filter options with proper ranges for sliders
+const getFilterOptions = async (req, res) => {
+  try {
+    // Get all technicians to calculate ranges
+    const technicianSnapshot = await techniciansCollection.get();
+    const technicians = [];
+    
+    for (const doc of technicianSnapshot.docs) {
+      const data = doc.data();
+      const technicianData = {
+        id: doc.id,
+        ...data,
+        rating: await getTechnicianAverageRating(doc.id)
+      };
+      technicians.push(technicianData);
+    }
+
+    // Calculate price range
+    const visitingFees = technicians
+      .map(tech => parseFloat(tech.visitingFee) || 0)
+      .filter(fee => fee > 0);
+    
+    const minPrice = visitingFees.length > 0 ? Math.min(...visitingFees) : 0;
+    const maxPrice = visitingFees.length > 0 ? Math.max(...visitingFees) : 200;
+
+    // Calculate service radius range
+    const serviceRadii = technicians
+      .map(tech => parseFloat(tech.serviceRadius) || 10)
+      .filter(radius => radius > 0);
+    
+    const minRadius = serviceRadii.length > 0 ? Math.min(...serviceRadii) : 5;
+    const maxRadius = serviceRadii.length > 0 ? Math.max(...serviceRadii) : 50;
+
+    // Get unique languages
+    const allLanguages = new Set();
+    technicians.forEach(tech => {
+      // Handle both 'languages' and 'language' field names
+      const techLanguages = tech.languages || tech.language || [];
+      if (Array.isArray(techLanguages)) {
+        techLanguages.forEach(lang => allLanguages.add(lang));
+      } else if (techLanguages) {
+        allLanguages.add(techLanguages);
+      }
+    });
+
+    // Get experience range
+    const experiences = technicians
+      .map(tech => parseInt(tech.experience) || 0)
+      .filter(exp => exp > 0);
+    
+    const minExperience = experiences.length > 0 ? Math.min(...experiences) : 0;
+    const maxExperience = experiences.length > 0 ? Math.max(...experiences) : 20;
+
+    const filterOptions = {
+      price: {
+        min: Math.floor(minPrice),
+        max: Math.ceil(maxPrice),
+        step: 10,
+        default: [Math.floor(minPrice), Math.ceil(maxPrice)],
+        ranges: [
+          { label: 'Under Rs.50', value: 'under-50', min: 0, max: 49 },
+          { label: 'Rs.50 - Rs.100', value: '50-100', min: 50, max: 100 },
+          { label: 'Rs.100 - Rs.150', value: '100-150', min: 100, max: 150 },
+          { label: 'Rs.150+', value: '150+', min: 150, max: maxPrice }
+        ]
+      },
+      rating: {
+        min: 2.0,
+        max: 5.0,
+        step: 0.5,
+        default: [2.0, 5.0],
+        intervals: [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
+        ranges: [
+          { label: '2.0+', value: '2.0', min: 2.0 },
+          { label: '2.5+', value: '2.5', min: 2.5 },
+          { label: '3.0+', value: '3.0', min: 3.0 },
+          { label: '3.5+', value: '3.5', min: 3.5 },
+          { label: '4.0+', value: '4.0', min: 4.0 },
+          { label: '4.5+', value: '4.5', min: 4.5 }
+        ]
+      },
+      distance: {
+        min: Math.floor(minRadius),
+        max: Math.ceil(maxRadius),
+        step: 5,
+        default: [Math.floor(minRadius), Math.ceil(maxRadius)],
+        ranges: [
+          { label: 'Within 5km', value: '5', max: 5 },
+          { label: 'Within 10km', value: '10', max: 10 },
+          { label: 'Within 20km', value: '20', max: 20 },
+          { label: 'Within 50km', value: '50', max: 50 }
+        ]
+      },
+      experience: {
+        min: minExperience,
+        max: maxExperience,
+        step: 1,
+        default: [minExperience, maxExperience],
+        ranges: [
+          { label: '1+ years', value: '1', min: 1 },
+          { label: '2+ years', value: '2', min: 2 },
+          { label: '5+ years', value: '5', min: 5 },
+          { label: '10+ years', value: '10', min: 10 }
+        ]
+      },
+      languages: Array.from(allLanguages).sort(),
+      availability: [
+        { label: 'Available Now', value: 'available' },
+        { label: 'All Technicians', value: 'all' }
+      ],
+      sortOptions: [
+        { label: 'Best Rating', value: 'rating' },
+        { label: 'Lowest Price', value: 'price' },
+        { label: 'Nearest', value: 'distance' },
+        { label: 'Most Experienced', value: 'experience' },
+        { label: 'Recently Added', value: 'recent' },
+        { label: 'Available First', value: 'availability' },
+        { label: 'Alphabetical', value: 'name' }
+      ]
+    };
+
+    res.status(200).json({
+      success: true,
+      data: filterOptions,
+      meta: {
+        totalTechnicians: technicians.length,
+        priceRange: `Rs.${minPrice} - Rs.${maxPrice}`,
+        ratingRange: '2.0 - 5.0',
+        serviceRadiusRange: `${minRadius}km - ${maxRadius}km`
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting filter options:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get filter options',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   searchTechnicians,
   searchServiceCenters,
@@ -1186,7 +1614,11 @@ module.exports = {
   getServiceCategories,
   getFeaturedResults,
   getSearchSuggestions,
+  getTechnicianRating,
   getRecentSearches,
   deleteSearchHistory,
-  clearSearchHistory
+  clearSearchHistory,
+  getTechnicianAverageRating,
+  getTechnicianFeedbackCount,
+  getFilterOptions
 };
