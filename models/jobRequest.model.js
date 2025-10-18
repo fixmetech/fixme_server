@@ -3,6 +3,7 @@ class JobRequest {
     jobId = null,
     status = "pending",
     customerLocation = null,
+    customerAddress = null,
     customerId,
     technicianId = null,
     propertyInfo,
@@ -15,6 +16,7 @@ class JobRequest {
     this.jobId = jobId;
     this.status = status;
     this.customerLocation = customerLocation;
+    this.customerAddress = customerAddress;
     this.customerId = customerId;
     this.technicianId = technicianId;
     this.propertyInfo = propertyInfo;
@@ -36,6 +38,7 @@ class JobRequest {
             longitude: parseFloat(data.customerLocation.longitude) || 0.0,
           }
         : null,
+      customerAddress: data.customerAddress || null,
       customerId: data.customerId || "",
       technicianId: data.technicianId || null,
       propertyInfo: data.propertyInfo || {},
@@ -70,6 +73,7 @@ class JobRequest {
             longitude: this.customerLocation.longitude,
           }
         : null,
+      customerAddress: this.customerAddress,
       customerId: this.customerId,
       technicianId: this.technicianId,
       propertyInfo: this.propertyInfo,

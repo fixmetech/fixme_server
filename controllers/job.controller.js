@@ -8,6 +8,14 @@ const {
 const geofire = require("geofire-common");
 const collection = db.collection("jobRequests");
 
+// Error handler wrapper
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch((err) => {
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: err.message });
+  });
+};
+
 /**
  * GET /job-requests/:jobRequestId
  * Returns a normalized job request document.
@@ -516,13 +524,68 @@ exports.saveReview = async (req, res) => {
   }
 };
 
-// Error handler wrapper
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch((err) => {
-    const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({ error: err.message });
+exports.getJobActivitiesByCustomerId = asyncHandler(async (req, res) => {
+  const { customerId } = req.params;
+
+  if (!customerId) {
+    return res.status(400).json({ error: "Missing customerId" });
+  }
+
+  //console.log("customerId:", customerId);
+
+  const jobRequestsSnapshot = await db
+    .collection("jobRequests")
+    .where("customerId", "==", customerId)
+    .get();
+
+  // If no jobs found
+  if (jobRequestsSnapshot.empty) {
+    return res.status(200).json({
+      success: true,
+      message: `No job activities found for customerId: ${customerId}`,
+      data: [],
+      count: 0,
+    });
+  }
+
+  // Use Promise.all to handle async operations properly
+  const jobRequests = await Promise.all(
+    jobRequestsSnapshot.docs.map(async (doc) => {
+      const jobData = doc.data();
+      let technicianName = null;
+      let technicianPhone = null;
+
+      if (jobData.technicianId) {
+        const technicianDoc = await db
+          .collection("technicians")
+          .doc(jobData.technicianId)
+          .get();
+        if (technicianDoc.exists) {
+          const techData = technicianDoc.data();
+          technicianName = techData.name || null;
+          technicianPhone = techData.phone || null;
+        }
+      }
+
+      return {
+        jobId: doc.id,
+        technicianName,
+        technicianPhone,
+        ...jobData,
+      };
+    })
+  );
+
+  //console.log("step 03");
+  //console.log("jobRequests:", jobRequests);
+
+  res.status(200).json({
+    success: true,
+    message: `Found ${jobRequests.length} job activities for customerId: ${customerId}`,
+    data: jobRequests,
+    count: jobRequests.length,
   });
-};
+});
 
 exports.findNearestTechnician = asyncHandler(async (req, res) => {
   const jobRequestData = req.body;
