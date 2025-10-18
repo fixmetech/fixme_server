@@ -8,7 +8,6 @@ const {
 const geofire = require("geofire-common");
 const collection = db.collection("jobRequests");
 
-
 // Error handler wrapper
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch((err) => {
@@ -531,23 +530,54 @@ exports.getJobActivitiesByCustomerId = asyncHandler(async (req, res) => {
   if (!customerId) {
     return res.status(400).json({ error: "Missing customerId" });
   }
-  console.log("customerId:", customerId);
+
+  //console.log("customerId:", customerId);
 
   const jobRequestsSnapshot = await db
     .collection("jobRequests")
     .where("customerId", "==", customerId)
     .get();
 
+  // If no jobs found
+  if (jobRequestsSnapshot.empty) {
+    return res.status(200).json({
+      success: true,
+      message: `No job activities found for customerId: ${customerId}`,
+      data: [],
+      count: 0,
+    });
+  }
 
+  // Use Promise.all to handle async operations properly
+  const jobRequests = await Promise.all(
+    jobRequestsSnapshot.docs.map(async (doc) => {
+      const jobData = doc.data();
+      let technicianName = null;
+      let technicianPhone = null;
 
-  const jobRequests = [];
-  jobRequestsSnapshot.forEach((doc) => {
-    jobRequests.push({ jobId: doc.id, ...doc.data() });
-  });
+      if (jobData.technicianId) {
+        const technicianDoc = await db
+          .collection("technicians")
+          .doc(jobData.technicianId)
+          .get();
+        if (technicianDoc.exists) {
+          const techData = technicianDoc.data();
+          technicianName = techData.name || null;
+          technicianPhone = techData.phone || null;
+        }
+      }
 
-    console.log(jobRequests);
+      return {
+        jobId: doc.id,
+        technicianName,
+        technicianPhone,
+        ...jobData,
+      };
+    })
+  );
 
-  console.log("step 03");
+  //console.log("step 03");
+  //console.log("jobRequests:", jobRequests);
 
   res.status(200).json({
     success: true,
