@@ -8,9 +8,11 @@ const {
   getServiceCategories,
   getFeaturedResults,
   getSearchSuggestions,
+  getTechnicianRating,
   getRecentSearches,
   deleteSearchHistory,
-  clearSearchHistory
+  clearSearchHistory,
+  getFilterOptions
 } = require('../controllers/search.controller');
 
 // Main search routes
@@ -27,6 +29,12 @@ router.get('/featured', getFeaturedResults);
 
 // Search suggestions
 router.get('/suggestions', getSearchSuggestions);
+
+// Filter options for sliders and dropdowns
+router.get('/filter-options', getFilterOptions);
+
+// Technician rating
+router.get('/technician-rating/:technicianId', getTechnicianRating);
 
 // Search history routes
 router.get('/history/:userId', getRecentSearches);  // Get user's recent searches
