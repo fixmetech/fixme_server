@@ -612,6 +612,50 @@ const testEndpoint = async (req, res) => {
   }
 };
 
+//Get all the booking requests for a technician (schedule and status pending confirmed)
+const getBookingsByTechnician = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    console.log('Fetching bookings for technician:', technicianId);
+    
+    if (!technicianId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician ID is required'
+      });
+    }
+    const snapshot = await db.collection('bookings')
+      .where('technicianId', '==', technicianId)
+      .orderBy('scheduledDate', 'desc')
+      .get();
+    const bookings = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      bookings.push({
+        id: doc.id,
+        ...data,
+        // Convert Firestore timestamps to ISO strings for frontend
+        createdAt: data.createdAt?.toDate()?.toISOString(),
+        updatedAt: data.updatedAt?.toDate()?.toISOString(),
+        scheduledDate: data.scheduledDate?.toDate()?.toISOString()
+      });
+    });
+
+    res.json({
+      success: true,
+      data: bookings,
+      total: bookings.length
+    });
+  } catch (err) {
+    console.error('Get bookings error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bookings'
+    });
+  }
+};
+
+
 module.exports = {
   registerTechnician,
   getAllTechnicians,
@@ -620,5 +664,6 @@ module.exports = {
   getTechnicianStatus,
   loginTechnician,
   changeTechnicianAvailability,
-  testEndpoint
+  testEndpoint,
+  getBookingsByTechnician
 };

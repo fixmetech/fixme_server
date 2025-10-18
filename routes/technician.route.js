@@ -9,10 +9,12 @@ const {
   getTechnicianStatus,
   loginTechnician,
   changeTechnicianAvailability,
+  getBookingsByTechnician,
+
   testEndpoint
 } = require('../controllers/technician.controller');
 
-const {getBookingsByTechnician} = require('../controllers/booking.controller');
+
 const { uploadTechnicianFiles } = require('../utils/upload.util');
 
 
@@ -59,7 +61,7 @@ router.get('/test', testEndpoint);
 router.post('/:technicianId/speciality', addSpecialityToTechnician);
 
 //Get scheduled bookings for a technician
-router.get("/bookings/:technicianId",getBookingsByTechnician);
+router.get('/:technicianId/bookings', getBookingsByTechnician)
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {
@@ -93,6 +95,6 @@ router.use((error, req, res, next) => {
   });
 });
 
-
+// Get 
 
 module.exports = router;

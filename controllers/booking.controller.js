@@ -59,7 +59,7 @@ const createBooking = async (req, res) => {
     }
 };
 
-// Get all bookings for a technician 
+// Get all bookings for a technician from customer side to check the availability of the technicians 
 const getBookingsByTechnician = async (req, res) => {
     try {
         const { technicianId } = req.params;
