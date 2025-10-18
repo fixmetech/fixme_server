@@ -259,7 +259,7 @@ const getScheduledBookingsByCustomerId = async (req, res) => {
 
 
         
-        console.log(`Found ${bookings.length} scheduled bookings for customer ${customerId}`);
+        //console.log(`Found ${bookings.length} scheduled bookings for customer ${customerId}`);
         res.status(200).json({
             success: true,
             data: bookings,
