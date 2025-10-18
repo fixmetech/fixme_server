@@ -7,6 +7,8 @@ class Technician {
     dateOfBirth,
     gender,
     nicNumber,
+    experience,
+    languages,
     serviceCategory,
     specializations,
     serviceDescription,
@@ -22,7 +24,6 @@ class Technician {
     verificationDocuments,
     // New fields for search functionality
     visitingFee,
-    languages,
     location,
     availability,
     workingHours
@@ -92,7 +93,7 @@ class Technician {
     this.reviews = [];
     this.averageResponseTime = 30; // minutes
     this.tags = specializations || []; // Searchable tags
-    this.experienceYears = 0;
+    this.experienceYears = experience || 0;
     this.certifications = [];
   }
 }
