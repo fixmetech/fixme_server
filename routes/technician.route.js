@@ -15,9 +15,13 @@ const {
   testEndpoint,
   sendJobRequestToTechnician,
   jobAcceptOrReject,
+  getWalletInfo,
+  topUpWallet,
+  testEndpoint,
 } = require("../controllers/technician.controller");
 
 const { uploadTechnicianFiles } = require("../utils/upload.util");
+
 
 const {
   addSpecialityToTechnician,
@@ -85,6 +89,10 @@ router.post("/test-notification", sendJobRequestToTechnician);
 router.post("/jobaccept", jobAcceptOrReject);
 
 
+
+// Wallet endpoints
+router.get('/:technicianId/wallet', getWalletInfo);
+router.post('/:technicianId/wallet/topup', topUpWallet);
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {

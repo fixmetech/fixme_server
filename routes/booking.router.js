@@ -6,6 +6,9 @@ const {
   getBookingsByTechnician,
   getAvailableTimeSlots,
   getScheduledBookingsByCustomerId,
+  getCompletedBookingsByCustomerAndTechnician,
+  updateBookingStatus,
+
 } = require("../controllers/booking.controller");
 // const { authenticate } =  require('../utils/middleware/auth.middleware');
 
@@ -22,5 +25,15 @@ router.get(
   "/my-bookings/:customerId",
   /* verifyAuth, */ getScheduledBookingsByCustomerId
 );
+
+
+// Get completed bookings for customer-technician pair (for complaint filing)
+router.get(
+  "/completed/:customerId/:technicianId",
+  getCompletedBookingsByCustomerAndTechnician
+);
+
+// Update booking status (for technicians)
+router.patch("/:bookingId/status", updateBookingStatus);
 
 module.exports = router;
