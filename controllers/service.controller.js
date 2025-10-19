@@ -630,6 +630,7 @@ const addService = async (req, res) => {
 
     const newService = {
       ...value,
+      image: imageUrl || null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -762,7 +763,7 @@ const viewAllServices = async (req, res) => {
     const data = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      image: doc.data().image || null   // return null if no image
+      image: doc.data().image  || null  // return null if no image
     }));
 
     res.json({ success: true, data });
