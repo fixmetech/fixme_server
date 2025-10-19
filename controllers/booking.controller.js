@@ -275,9 +275,79 @@ const getScheduledBookingsByCustomerId = async (req, res) => {
     }
 };
 
+// Get completed bookings for customer-technician pair (for complaint filing)
+const getCompletedBookingsByCustomerAndTechnician = async (req, res) => {
+    try {
+        const { customerId, technicianId } = req.params;
+        console.log('Fetching completed bookings for customer-technician pair:', { customerId, technicianId });
+        
+        if (!customerId || !technicianId) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Customer ID and Technician ID are required' 
+            });
+        }
+
+        // First fetch all bookings for the customer
+        const snapshot = await db.collection('bookings')
+            .where('userId', '==', customerId)
+            .get();
+            
+        const bookings = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            
+            // Filter in memory for technician and completed status to avoid composite index requirement
+            if (data.technicianId === technicianId && data.status === 'completed') {
+                bookings.push({ 
+                    id: doc.id, 
+                    bookingId: doc.id,
+                    name: data.serviceSpecialization || data.serviceCategory || 'Service',
+                    date: data.scheduledDate?.toDate ? data.scheduledDate.toDate().toISOString().split('T')[0] : data.scheduledDate,
+                    time: data.scheduledTime || 'N/A',
+                    service: data.serviceSpecialization || data.serviceCategory,
+                    price: data.priceEstimate || 0,
+                    description: data.description || '',
+                    technician: {
+                        id: data.technicianId,
+                        name: data.technicianDetails?.name || 'Unknown Technician',
+                        email: data.technicianDetails?.email || '',
+                        phone: data.technicianDetails?.phone || '',
+                        profession: data.serviceCategory || 'Technician'
+                    },
+                    ...data,
+                    // Convert Firestore timestamps to ISO strings for frontend
+                    createdAt: data.createdAt?.toDate()?.toISOString(),
+                    updatedAt: data.updatedAt?.toDate()?.toISOString(),
+                    scheduledDate: data.scheduledDate?.toDate ? data.scheduledDate.toDate().toISOString() : data.scheduledDate,
+                    bookingDate: data.bookingDate?.toDate ? data.bookingDate.toDate().toISOString() : data.bookingDate
+                });
+            }
+        });
+
+        // Sort by scheduled date descending
+        bookings.sort((a, b) => new Date(b.scheduledDate) - new Date(a.scheduledDate));
+
+        console.log(`Found ${bookings.length} completed bookings for customer ${customerId} and technician ${technicianId}`);
+        res.status(200).json({
+            success: true,
+            data: bookings,
+            total: bookings.length
+        });
+        
+    } catch (err) {
+        console.error('Error fetching completed bookings:', err);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch completed bookings: ' + err.message 
+        });
+    }
+};
+
 module.exports = {
     createBooking,
     getBookingsByTechnician,
     getAvailableTimeSlots,
-    getScheduledBookingsByCustomerId
+    getScheduledBookingsByCustomerId,
+    getCompletedBookingsByCustomerAndTechnician
 };

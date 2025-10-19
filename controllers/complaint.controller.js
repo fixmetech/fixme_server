@@ -39,6 +39,44 @@ class ComplaintController {
       
       // Generate unique ID
       const complaintId = uuidv4();
+
+      // Enhance customer data with proper name from database
+      if (complaintData.customer && complaintData.customer.userId) {
+        try {
+          const userDoc = await db.collection('users').doc(complaintData.customer.userId).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data() || {};
+            const firstName = userData.firstName || '';
+            const lastName = userData.lastName || '';
+            
+            // Concatenate first and last name
+            let fullName = '';
+            if (firstName && lastName) {
+              fullName = `${firstName} ${lastName}`;
+            } else if (firstName) {
+              fullName = firstName;
+            } else if (lastName) {
+              fullName = lastName;
+            } else {
+              fullName = complaintData.customer.name || 'Unknown User';
+            }
+
+            // Update customer data with proper name and other details
+            complaintData.customer.name = fullName;
+            complaintData.customer.email = userData.email || complaintData.customer.email;
+            complaintData.customer.phone = userData.phone || complaintData.customer.phone;
+            
+            console.log('Enhanced customer data:', {
+              name: fullName,
+              email: complaintData.customer.email,
+              userId: complaintData.customer.userId
+            });
+          }
+        } catch (userFetchError) {
+          console.warn('Could not fetch user details from database:', userFetchError);
+          // Continue with original data if user fetch fails
+        }
+      }
       
       // Create complaint instance
       const complaint = new Complaint({
@@ -117,6 +155,44 @@ class ComplaintController {
       
       // Generate unique ID
       const complaintId = uuidv4();
+
+      // Enhance customer data with proper name from database
+      if (complaintData.customer && complaintData.customer.userId) {
+        try {
+          const userDoc = await db.collection('users').doc(complaintData.customer.userId).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data() || {};
+            const firstName = userData.firstName || '';
+            const lastName = userData.lastName || '';
+            
+            // Concatenate first and last name
+            let fullName = '';
+            if (firstName && lastName) {
+              fullName = `${firstName} ${lastName}`;
+            } else if (firstName) {
+              fullName = firstName;
+            } else if (lastName) {
+              fullName = lastName;
+            } else {
+              fullName = complaintData.customer.name || 'Unknown User';
+            }
+
+            // Update customer data with proper name and other details
+            complaintData.customer.name = fullName;
+            complaintData.customer.email = userData.email || complaintData.customer.email;
+            complaintData.customer.phone = userData.phone || complaintData.customer.phone;
+            
+            console.log('Enhanced customer data:', {
+              name: fullName,
+              email: complaintData.customer.email,
+              userId: complaintData.customer.userId
+            });
+          }
+        } catch (userFetchError) {
+          console.warn('Could not fetch user details from database:', userFetchError);
+          // Continue with original data if user fetch fails
+        }
+      }
       
       // Create complaint instance
       const complaint = new Complaint({
