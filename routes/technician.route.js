@@ -11,7 +11,8 @@ const {
   changeTechnicianAvailability,
   getBookingsByTechnician,
   getPastRequestsByTechnician,
-
+  getWalletInfo,
+  topUpWallet,
   testEndpoint
 } = require('../controllers/technician.controller');
 
@@ -66,6 +67,10 @@ router.get('/:technicianId/bookings', getBookingsByTechnician)
 
 //Get past job requests for a technician
 router.get('/:technicianId/past-requests', getPastRequestsByTechnician)
+
+// Wallet endpoints
+router.get('/:technicianId/wallet', getWalletInfo);
+router.post('/:technicianId/wallet/topup', topUpWallet);
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {

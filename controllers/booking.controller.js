@@ -343,6 +343,110 @@ const getCompletedBookingsByCustomerAndTechnician = async (req, res) => {
         });
     }
 };
+// Update booking status (for technicians to accept/complete/reject bookings)
+const updateBookingStatus = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { status, rejectionReason, completionNotes, finalPrice } = req.body;
+        
+        if (!bookingId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Booking ID is required'
+            });
+        }
+        
+        if (!status || !['confirmed', 'completed', 'rejected', 'cancelled'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Valid status is required (confirmed, completed, rejected, cancelled)'
+            });
+        }
+        
+        const bookingRef = db.collection('bookings').doc(bookingId);
+        const bookingDoc = await bookingRef.get();
+        
+        if (!bookingDoc.exists) {
+            return res.status(404).json({
+                success: false,
+                error: 'Booking not found'
+            });
+        }
+        
+        const bookingData = bookingDoc.data();
+        const updateData = {
+            status: status,
+            updatedAt: new Date()
+        };
+        
+        // Add additional fields based on status
+        if (status === 'rejected' && rejectionReason) {
+            updateData.rejectionReason = rejectionReason;
+            updateData.rejectedAt = new Date();
+        }
+        
+        if (status === 'completed') {
+            updateData.completedAt = new Date();
+            if (completionNotes) updateData.completionNotes = completionNotes;
+            if (finalPrice) updateData.finalPrice = parseFloat(finalPrice);
+            
+            // Handle commission deduction for cash payments
+            if (bookingData.paymentDetails && bookingData.paymentDetails.method === 'cash') {
+                try {
+                    const { deductCommissionFromWallet } = require('./technician.controller');
+                    const amount = finalPrice || bookingData.priceEstimate || 0;
+                    
+                    if (amount > 0) {
+                        const result = await deductCommissionFromWallet(
+                            bookingData.technicianId, 
+                            amount, 
+                            bookingId,
+                            `Commission deduction for booking ${bookingId}`
+                        );
+                        
+                        updateData.commissionDeducted = result.commissionDeducted;
+                        updateData.walletTransaction = result.transaction;
+                        
+                        console.log(`Commission deducted for booking ${bookingId}: LKR ${result.commissionDeducted}`);
+                    }
+                } catch (walletError) {
+                    console.error('Error deducting commission:', walletError);
+                    // Continue with booking update even if wallet deduction fails
+                    updateData.commissionError = walletError.message;
+                }
+            }
+        }
+        
+        if (status === 'confirmed') {
+            updateData.confirmedAt = new Date();
+        }
+        
+        // Update the booking
+        await bookingRef.update(updateData);
+        
+        // Get updated booking data
+        const updatedBooking = await bookingRef.get();
+        const responseData = {
+            id: updatedBooking.id,
+            ...updatedBooking.data(),
+            updatedAt: updatedBooking.data().updatedAt.toDate().toISOString()
+        };
+        
+        res.json({
+            success: true,
+            message: `Booking ${status} successfully`,
+            data: responseData
+        });
+        
+    } catch (error) {
+        console.error('Error updating booking status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update booking status'
+        });
+    }
+}; 
+
 
 module.exports = {
     createBooking,
@@ -350,4 +454,5 @@ module.exports = {
     getAvailableTimeSlots,
     getScheduledBookingsByCustomerId,
     getCompletedBookingsByCustomerAndTechnician
+    updateBookingStatus
 };
