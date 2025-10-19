@@ -10,6 +10,7 @@ const {
   loginTechnician,
   changeTechnicianAvailability,
   getBookingsByTechnician,
+  getPastRequestsByTechnician,
 
   testEndpoint
 } = require('../controllers/technician.controller');
@@ -62,6 +63,9 @@ router.post('/:technicianId/speciality', addSpecialityToTechnician);
 
 //Get scheduled bookings for a technician
 router.get('/:technicianId/bookings', getBookingsByTechnician)
+
+//Get past job requests for a technician
+router.get('/:technicianId/past-requests', getPastRequestsByTechnician)
 
 // Error handling middleware for file uploads
 router.use((error, req, res, next) => {

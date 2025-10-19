@@ -674,6 +674,63 @@ const getBookingsByTechnician = async (req, res) => {
   }
 };
 
+// Get all the past requests for a technican (completed rejected and cancelled)
+const getPastRequestsByTechnician = async (req, res) => {
+  try{
+    const {technicianId} = req.params;
+    if(!technicianId){
+      return res.status(400).json({
+        success: false,
+        error: 'Technician ID is required'
+      });
+    }
+    
+    // Alternative approach: Use separate queries to avoid composite index
+    const statuses = ['completed', 'rejected', 'cancelled'];
+    const allRequests = [];
+    
+    // Execute queries for each status separately
+    for (const status of statuses) {
+      const snapshot = await db.collection('bookings')
+        .where('technicianId', '==', technicianId)
+        .where('status', '==', status)
+        .get();
+        
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        allRequests.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate()?.toISOString(),
+          updatedAt: data.updatedAt?.toDate()?.toISOString(),
+          scheduledDate: data.scheduledDate?.toDate()?.toISOString()
+        });
+      });
+    }
+    
+    // Sort by scheduledDate in JavaScript
+    allRequests.sort((a, b) => {
+      const dateA = new Date(a.scheduledDate || a.createdAt);
+      const dateB = new Date(b.scheduledDate || b.createdAt);
+      return dateB - dateA; // Descending order (newest first)
+    });
+    
+    res.json({
+      success: true,
+      data: allRequests,
+      total: allRequests.length
+    });
+  } catch (err) {
+    console.error('Get past requests error:', err);
+    res.status(500).json({
+      success: false, 
+      error: 'Failed to fetch past requests'
+    });
+    
+  }
+}
+
+
 
 module.exports = {
   registerTechnician,
@@ -684,5 +741,6 @@ module.exports = {
   loginTechnician,
   changeTechnicianAvailability,
   testEndpoint,
-  getBookingsByTechnician
+  getBookingsByTechnician,
+  getPastRequestsByTechnician
 };
