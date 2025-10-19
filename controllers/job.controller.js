@@ -72,6 +72,43 @@ exports.getJobRequestById = async (req, res) => {
   }
 };
 
+exports.getJobRequestInfoById = async (req, res) => {
+  try {
+    const { jobRequestId } = req.params;
+    if (!jobRequestId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing jobRequestId",
+      });
+    }
+
+    const snap = await db.collection("jobRequests").doc(jobRequestId).get();
+    if (!snap.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Job request not found",
+      });
+    }
+
+    const data = snap.data();
+    console.log(data);
+    const dataWithId = { ...data, jobId: snap.id };
+    result = JobRequest.fromMap(dataWithId);
+    // console.log(result);
+
+    return res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    console.error("getJobRequestInfoById error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+};
+
 exports.confirmPin = async (req, res) => {
   try {
     const { jobRequestId } = req.params;
@@ -659,7 +696,6 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
   );
 
   console.log("step02 done");
-  
 
   // Filter technicians by service category
   const filteredTechnicians = nearbyTechnicians.filter(
@@ -691,7 +727,6 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
   );
 
   console.log("step03 done");
-
 
   if (!assignedTechnicianId) {
     return res.status(404).json({
@@ -727,7 +762,7 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
     });
   }
   console.log("step04 done");
-  
+
   return res.status(200).json({
     success: true,
     message: "Job request created and technician assigned successfully",
@@ -765,4 +800,51 @@ exports.cancelJobRequest = async (req, res) => {
     success: true,
     message: "Job request cancelled successfully",
   });
+};
+
+exports.updateJobStatus = async (req, res) => {
+  async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const { status } = req.body;
+
+      if (!jobId) {
+        return res.status(400).json({ success: false, error: "Missing jobId" });
+      }
+
+      if (!status) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Missing status" });
+      }
+
+      const jobRef = db.collection("jobRequests").doc(jobId);
+      const snap = await jobRef.get();
+
+      if (!snap.exists) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Job request not found" });
+      }
+
+      // Update status
+      await jobRef.update({
+        status: status,
+        updatedAt: new Date().toISOString(),
+      });
+
+      const updatedJob = await jobRef.get();
+
+      return res.json({
+        success: true,
+        message: `Job status updated to '${status}'`,
+        data: updatedJob.data(),
+      });
+    } catch (err) {
+      console.error("Error updating job status:", err);
+      return res
+        .status(500)
+        .json({ success: false, error: "Internal server error" });
+    }
+  };
 };

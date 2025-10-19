@@ -17,6 +17,8 @@ const {
     findNearestTechnician,
     getJobActivitiesByCustomerId,
     cancelJobRequest,
+    getJobRequestInfoById,
+    updateJobStatus,
  } = require('../controllers/job.controller');
 
 // Optional auth: if you want to require Firebase ID token from client,
@@ -24,13 +26,15 @@ const {
 // const { verifyAuth } = require('../utils/middleware/auth.middleware');
 
 router.post('/:jobId/start-pin', /* verifyAuth, */ setStartPin);
-router.get('/requests/:jobRequestId', /* verifyAuth, */ getJobRequestById);
+router.get('/requests/:jobRequestId', /* verifyAuth, */ getJobRequestInfoById);
+router.get('/get-job/:jobRequestId', /* verifyAuth, */ getJobRequestInfoById);
 router.get('/my-activities/:customerId', /* verifyAuth, */ getJobActivitiesByCustomerId);
 router.post('/requests/:jobRequestId/confirm-pin', /* verifyAuth, */ confirmPin);
 router.post('/:jobId/estimate', /* verifyAuth, */ submitEstimate);
 router.get('/:jobId/estimate-status', /* verifyAuth, */ getEstimateStatus);
 router.post('/:jobId/estimate-approval', /* verifyAuth, */ approveEstimateDecision);
 router.get('/:jobId/status', /* verifyAuth, */ getJobStatus);
+router.put('/:jobId/status', /* verifyAuth, */ updateJobStatus);
 router.post('/:jobId/finish', /* verifyAuth, */ finishJob);
 router.post('/:jobId/finish-pin', /* verifyAuth, */ setFinishPin);
 router.get('/:jobId/finish-pin', /* verifyAuth, */ getFinishPin);
