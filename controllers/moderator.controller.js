@@ -14,6 +14,21 @@ const {
   getDocumentMetadata 
 } = require('../utils/document.util');
 
+// Utility function to safely convert Firestore timestamps to JavaScript dates
+const safeToDate = (timestamp) => {
+  if (!timestamp) return null;
+  
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  } else if (timestamp instanceof Date) {
+    return timestamp;
+  } else if (typeof timestamp === 'string') {
+    return new Date(timestamp);
+  }
+  
+  return null;
+};
+
 const moderatorCollection = db.collection('moderators');
 const technicianCollection = db.collection('technicians');
 const notificationCollection = db.collection('moderator_notifications');
@@ -473,8 +488,11 @@ const updateTechnicianStatus = async (req, res) => {
     if (value.status === 'suspended') {
       updateData.isActive = false;
       updateData.suspendedAt = new Date();
-      updateData.suspensionReason = value.reason;
-    } else if (value.status === 'active') {
+      const suspensionReason = value.moderatorComments || value.reason;
+      if (suspensionReason) {
+        updateData.suspensionReason = suspensionReason;
+      }
+    } else if (value.status === 'approved' || value.status === 'active') {
       updateData.isActive = true;
       updateData.suspendedAt = null;
       updateData.suspensionReason = null;
@@ -482,8 +500,9 @@ const updateTechnicianStatus = async (req, res) => {
 
     await technicianRef.update(updateData);
 
-    // Create notification for technician
-    await createTechnicianStatusNotification(id, value.status, value.reason);
+    // Create notification for technician (non-blocking)
+    createTechnicianStatusNotification(id, value.status, value.moderatorComments || value.reason)
+      .catch(err => console.error('Failed to create notification:', err));
 
     res.json({
       success: true,
@@ -498,30 +517,131 @@ const updateTechnicianStatus = async (req, res) => {
     console.error('Update technician status error:', err);
     res.status(500).json({ 
       success: false,
-      error: 'Failed to update technician status' 
+      error: 'Failed to update technician status',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
 
-// Get all active technicians for management
+// Get all active technicians for management with ratings and badge info
 const getTechnicians = async (req, res) => {
   try {
     const { status, badge, serviceCategory, page = 1, limit = 10 } = req.query;
     
-    let query = technicianCollection.orderBy('registeredAt', 'desc');
+    let query = technicianCollection;
     
-    // Apply filters
+    // Apply filters - but avoid orderBy with where clauses that might cause index issues
     if (status && status !== 'all') {
       query = query.where('status', '==', status);
     }
     
     const snapshot = await query.get();
-    let technicians = snapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data(),
-      registeredAt: doc.data().registeredAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
-    }));
+    if (snapshot.empty) {
+      return res.json({
+        success: true,
+        data: [],
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: parseInt(limit)
+        }
+      });
+    }
+
+    let technicians = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id, 
+        ...data,
+        registeredAt: data.registeredAt?.toDate ? data.registeredAt.toDate() : null,
+        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : null
+      };
+    });
+
+    // Sort by registeredAt in memory since we can't use orderBy with where clauses
+    technicians.sort((a, b) => {
+      const dateA = a.registeredAt || new Date(0);
+      const dateB = b.registeredAt || new Date(0);
+      return dateB - dateA; // Descending order (newest first)
+    });
+
+    // Fetch ratings for all technicians (limit to avoid too many concurrent requests)
+    const technicianIds = technicians.map(tech => tech.id);
+    const ratingMap = {};
+    
+    // Process technicians in batches to avoid overwhelming the database
+    const batchSize = 10;
+    for (let i = 0; i < technicianIds.length; i += batchSize) {
+      const batch = technicianIds.slice(i, i + batchSize);
+      const ratingPromises = batch.map(async (techId) => {
+        try {
+          const feedbackSnapshot = await db.collection('technicianFeedback')
+            .where('technicianId', '==', techId)
+            .get();
+          
+          if (feedbackSnapshot.empty) {
+            return { technicianId: techId, rating: 0, reviewCount: 0 };
+          }
+          
+          let totalRating = 0;
+          let count = 0;
+          feedbackSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.rating && typeof data.rating === 'number') {
+              totalRating += data.rating;
+              count++;
+            }
+          });
+          
+          const averageRating = count > 0 ? (totalRating / count) : 0;
+          return { technicianId: techId, rating: Math.round(averageRating * 10) / 10, reviewCount: count };
+        } catch (error) {
+          console.error(`Error fetching ratings for technician ${techId}:`, error);
+          return { technicianId: techId, rating: 0, reviewCount: 0 };
+        }
+      });
+
+      const batchRatings = await Promise.all(ratingPromises);
+      batchRatings.forEach(r => {
+        ratingMap[r.technicianId] = { rating: r.rating, reviewCount: r.reviewCount };
+      });
+    }
+
+    // Enhance technicians with rating data and ensure badge type is set
+    technicians = technicians.map(tech => {
+      const ratingData = ratingMap[tech.id] || { rating: 0, reviewCount: 0 };
+      
+      // Determine badge type if not set
+      let badgeType = tech.badgeType || tech.verificationType;
+      if (!badgeType) {
+        // Default logic based on verification documents
+        if (tech.verificationDocuments && tech.verificationDocuments.certificates && tech.verificationDocuments.certificates.length > 0) {
+          badgeType = 'professional';
+        } else if (tech.experience && tech.experience > 2) {
+          badgeType = 'experience';
+        } else {
+          badgeType = 'probation';
+        }
+      }
+
+      return {
+        ...tech,
+        rating: ratingData.rating,
+        reviewCount: ratingData.reviewCount,
+        badgeType: badgeType,
+        // Ensure required fields have default values
+        name: tech.name || 'Unknown',
+        email: tech.email || 'No email',
+        phone: tech.phone || 'No phone',
+        serviceCategory: tech.serviceCategory || 'General',
+        totalJobs: tech.totalJobs || 0,
+        completedJobs: tech.completedJobs || 0,
+        cancelledJobs: tech.cancelledJobs || 0,
+        address: tech.address || 'Not provided',
+        status: tech.status || 'pending'
+      };
+    });
 
     // Client-side filtering for fields not indexed in Firestore
     if (badge && badge !== 'all') {
@@ -550,9 +670,229 @@ const getTechnicians = async (req, res) => {
     });
   } catch (err) {
     console.error('Get technicians error:', err);
+    console.error('Error stack:', err.stack);
     res.status(500).json({ 
       success: false,
-      error: 'Failed to fetch technicians' 
+      error: `Failed to fetch technicians: ${err.message}`,
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+};
+
+// Get detailed technician information with feedback and complaints
+const getTechnicianDetails = async (req, res) => {
+  try {
+    console.log('Getting technician details for ID:', req.params.id);
+    const { id } = req.params;
+    
+    // Get technician data
+    const technicianDoc = await technicianCollection.doc(id).get();
+    
+    if (!technicianDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+    
+    // Safely handle date conversions for technician data
+    const data = technicianDoc.data();
+    const technicianData = {
+      id: technicianDoc.id,
+      ...data,
+      registeredAt: safeToDate(data.registeredAt),
+      updatedAt: safeToDate(data.updatedAt)
+    };
+    
+    // Get technician feedback/reviews
+    const feedbackSnapshot = await db.collection('technicianFeedback')
+      .where('technicianId', '==', id)
+      .get();
+    
+    const feedback = [];
+    let totalRating = 0;
+    let ratingCount = 0;
+    
+    // Get customer names for feedback
+    const customerIds = [];
+    feedbackSnapshot.forEach(doc => {
+      const data = doc.data();
+      
+      feedback.push({
+        id: doc.id,
+        ...data,
+        createdAt: safeToDate(data.createdAt)
+      });
+      
+      if (data.customerId) {
+        customerIds.push(data.customerId);
+      }
+      
+      if (data.rating && typeof data.rating === 'number') {
+        totalRating += data.rating;
+        ratingCount++;
+      }
+    });
+    
+    // Fetch customer names
+    const customerNamesMap = {};
+    if (customerIds.length > 0) {
+      const uniqueCustomerIds = [...new Set(customerIds)];
+      const customerPromises = uniqueCustomerIds.map(async (customerId) => {
+        try {
+          const customerDoc = await db.collection('users').doc(customerId).get();
+          if (customerDoc.exists) {
+            const customerData = customerDoc.data();
+            const name = `${customerData.firstName || ''} ${customerData.lastName || ''}`.trim() || 'Customer';
+            return { id: customerId, name };
+          }
+        } catch (error) {
+          console.error(`Error fetching customer ${customerId}:`, error);
+        }
+        return { id: customerId, name: 'Customer' };
+      });
+      
+      const customerResults = await Promise.all(customerPromises);
+      customerResults.forEach(customer => {
+        customerNamesMap[customer.id] = customer.name;
+      });
+    }
+    
+    // Add customer names to feedback
+    feedback.forEach(fb => {
+      fb.customerName = customerNamesMap[fb.customerId] || 'Customer';
+    });
+    
+    // Sort feedback by createdAt descending (newest first)
+    feedback.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateB - dateA;
+    });
+    
+    // Get complaints against this technician
+    const complaintsSnapshot = await db.collection('complaints')
+      .where('technician.userId', '==', id)
+      .get();
+    
+    const complaints = [];
+    complaintsSnapshot.forEach(doc => {
+      const data = doc.data();
+      complaints.push({
+        id: doc.id,
+        customer: data.customer,
+        complaint: data.complaint,
+        service: data.service,
+        createdAt: data.complaint.submittedAt
+      });
+    });
+    
+    // Sort complaints by submittedAt descending (newest first)
+    complaints.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateB - dateA;
+    });
+    
+    // Calculate average rating
+    const averageRating = ratingCount > 0 ? Math.round((totalRating / ratingCount) * 10) / 10 : 0;
+    
+    // Determine badge type if not set
+    let badgeType = technicianData.badgeType || technicianData.verificationType;
+    if (!badgeType) {
+      if (technicianData.verificationDocuments && technicianData.verificationDocuments.certificates && technicianData.verificationDocuments.certificates.length > 0) {
+        badgeType = 'professional';
+      } else if (technicianData.experience && technicianData.experience > 2) {
+        badgeType = 'experience';
+      } else {
+        badgeType = 'probation';
+      }
+    }
+    
+    const response = {
+      technician: {
+        ...technicianData,
+        badgeType,
+        rating: averageRating,
+        reviewCount: ratingCount,
+        complaintCount: complaints.length,
+        totalJobs: technicianData.totalJobs || 0,
+        completedJobs: technicianData.completedJobs || 0,
+        cancelledJobs: technicianData.cancelledJobs || 0
+      },
+      feedback,
+      complaints
+    };
+    
+    res.json({
+      success: true,
+      data: response
+    });
+    
+  } catch (err) {
+    console.error('Get technician details error:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch technician details',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Promote technician from probation
+const promoteTechnician = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { badgeType = 'experience' } = req.body;
+    
+    const technicianRef = technicianCollection.doc(id);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+    
+    const technicianData = doc.data();
+    
+    // Check if technician is currently on probation
+    if (technicianData.status !== 'probation' && technicianData.badgeType !== 'probation') {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician is not on probation'
+      });
+    }
+    
+    const updateData = {
+      status: 'approved',
+      badgeType: badgeType,
+      updatedAt: new Date()
+    };
+    
+    await technicianRef.update(updateData);
+    
+    // Create notification for technician
+    await createTechnicianNotification(id, 'promoted', `You have been promoted to ${badgeType} status`, badgeType);
+    
+    res.json({
+      success: true,
+      message: 'Technician promoted successfully',
+      data: {
+        id,
+        status: updateData.status,
+        badgeType: updateData.badgeType,
+        updatedAt: updateData.updatedAt
+      }
+    });
+    
+  } catch (err) {
+    console.error('Promote technician error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to promote technician'
     });
   }
 };
@@ -829,6 +1169,8 @@ module.exports = {
   getDashboardStats,
   updateTechnicianStatus,
   getTechnicians,
+  getTechnicianDetails,
+  promoteTechnician,
   getDocument,
   verifyDocument,
   addReviewNotes
