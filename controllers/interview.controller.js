@@ -1,5 +1,6 @@
 const { db } = require('../firebase');
 const Interview = require('../models/interview.model');
+const emailService = require('../services/email.service');
 const { 
   scheduleInterviewSchema, 
   updateInterviewStatusSchema, 
@@ -97,6 +98,27 @@ const scheduleInterview = async (req, res) => {
       ...interview.toObject(),
       id: docRef.id
     });
+
+    // Send email notification about the scheduled interview
+    try {
+      const technicianData = registrationData;
+      const technicianEmail = technicianData.email;
+      const technicianName = technicianData.name || 'Technician';
+
+      if (technicianEmail) {
+        await emailService.sendInterviewEmail(
+          technicianEmail,
+          technicianName,
+          {
+            id: docRef.id,
+            ...interview.toObject()
+          }
+        );
+      }
+    } catch (emailError) {
+      console.error('Failed to send interview email notification:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.status(201).json({
       success: true,
@@ -407,6 +429,35 @@ const rescheduleInterview = async (req, res) => {
       ...updateData,
       id
     });
+
+    // Send email notification about the rescheduled interview
+    try {
+      // Get technician data from registration
+      const technicianCollection = db.collection('technicians');
+      const registrationDoc = await technicianCollection.doc(currentData.registrationId).get();
+      
+      if (registrationDoc.exists) {
+        const technicianData = registrationDoc.data();
+        const technicianEmail = technicianData.email;
+        const technicianName = technicianData.name || 'Technician';
+
+        if (technicianEmail) {
+          await emailService.sendInterviewEmail(
+            technicianEmail,
+            technicianName,
+            {
+              id,
+              ...currentData,
+              ...updateData,
+              isRescheduled: true
+            }
+          );
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send reschedule email notification:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.json({
       success: true,

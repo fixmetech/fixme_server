@@ -1,6 +1,7 @@
 const { db } = require('../firebase');
 const bcrypt = require('bcryptjs');
 const Moderator = require('../models/moderator.model');
+const emailService = require('../services/email.service');
 const { 
   moderatorRegistrationSchema, 
   moderatorLoginSchema, 
@@ -381,6 +382,34 @@ const reviewTechnicianRegistration = async (req, res) => {
 
     // Create notification for technician
     await createTechnicianNotification(id, value.status, value.moderatorComments, value.badgeType);
+
+    // Send email notification to technician
+    try {
+      const technicianData = doc.data();
+      const technicianEmail = technicianData.email;
+      const technicianName = technicianData.name || 'Technician';
+
+      if (technicianEmail) {
+        if (value.status === 'approved') {
+          await emailService.sendApprovalEmail(
+            technicianEmail,
+            technicianName,
+            value.badgeType,
+            value.moderatorComments
+          );
+        } else if (value.status === 'rejected') {
+          await emailService.sendRejectionEmail(
+            technicianEmail,
+            technicianName,
+            value.rejectionReason || value.moderatorComments,
+            value.moderatorComments
+          );
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send email notification:', emailError);
+      // Don't fail the request if email fails
+    }
 
     res.json({
       success: true,
