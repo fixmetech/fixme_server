@@ -48,7 +48,9 @@ const editServiceCenterImage = async (req, res) => {
     await deleteFromFirebaseStorage(oldFilePath);
 
     const fileName = generateFileName(newFile.originalname, 'serviceCenter-');
-    const folderPath = `serviceCenter/${servicecenterid}/profiles`;
+    // fixed path to match uploadServiceCenterImage
+    const folderPath = `serviceCenter/profiles/${servicecenterid}`;
+
     const downloadURL = await uploadToFirebaseStorage(newFile, folderPath, fileName);
 
     const docRef = db.collection('serviceCenters').doc(servicecenterid);
@@ -75,6 +77,8 @@ const deleteServiceCenterImage = async (req, res) => {
     const { servicecenterid } = req.params;
     const { filePath } = req.body;
 
+    console.log('path', filePath);
+
     if (!filePath) return res.status(400).json({ error: 'File path is required' });
 
     await deleteFromFirebaseStorage(filePath);
@@ -93,13 +97,30 @@ const deleteServiceCenterImage = async (req, res) => {
   }
 };
 
-// Get Functions
+// Get Service Center Images
 const getServiceCenterImages = async (req, res) => {
   try {
     const { servicecenterid } = req.params;
     const doc = await db.collection('serviceCenters').doc(servicecenterid).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Service Center not found' });
-    return res.status(200).json({ images: doc.data().images || [] });
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Service Center not found' });
+    }
+
+    const data = doc.data();
+    const images = Array.isArray(data.images)
+      ? data.images.filter(
+          img =>
+            img &&
+            img.url &&
+            img.filePath &&
+            img.url.trim() !== '' &&
+            img.filePath.trim() !== '' &&
+            img.filePath.startsWith('serviceCenter/')
+        )
+      : [];
+
+    return res.status(200).json({ images });
   } catch (error) {
     console.error('Fetch error:', error);
     return res.status(500).json({ error: error.message });
@@ -107,9 +128,8 @@ const getServiceCenterImages = async (req, res) => {
 };
 
 module.exports = {
-  // Service Center
   uploadServiceCenterImage,
   getServiceCenterImages,
   editServiceCenterImage,
-  deleteServiceCenterImage
+  deleteServiceCenterImage,
 };
