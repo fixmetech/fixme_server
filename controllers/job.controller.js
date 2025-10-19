@@ -112,7 +112,7 @@ exports.confirmPin = async (req, res) => {
     const nowIso = new Date().toISOString();
     const updates = {
       customerConfirmed: true,
-      status: "Verified", // or 'InProgress' per your flow
+      status: "technicianConfirmed", 
       updatedAt: nowIso,
     };
 
@@ -456,6 +456,17 @@ exports.verifyFinishPin = async (req, res) => {
       customerConfirmedAt: nowIso,
       updatedAt: nowIso,
     });
+
+    // Increment technician's totalJobs field by 1
+    const jobData = (await ref.get()).data();
+    const technicianId = jobData.technicianId;
+    if (technicianId) {
+      const techRef = db.collection("technicians").doc(technicianId);
+      await techRef.update({
+        totalJobs: db.FieldValue.increment(1),
+        updatedAt: nowIso,
+      });
+    }
 
     const updated = (await ref.get()).data();
     return res.json({
