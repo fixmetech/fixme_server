@@ -10,6 +10,8 @@ const {
   getDashboardStats,
   updateTechnicianStatus,
   getTechnicians,
+  getTechnicianDetails,
+  promoteTechnician,
   getDocument,
   verifyDocument,
   addReviewNotes
@@ -33,7 +35,9 @@ router.patch('/registrations/:id/review', reviewTechnicianRegistration);
 
 // Technician management routes
 router.get('/technicians', getTechnicians);
+router.get('/technicians/:id', getTechnicianDetails);
 router.patch('/technicians/:id/status', updateTechnicianStatus);
+router.patch('/technicians/:id/promote', promoteTechnician);
 
 // Document management routes
 router.get('/documents/:technicianId/:documentType', getDocument);
