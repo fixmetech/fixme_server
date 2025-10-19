@@ -257,6 +257,10 @@ const registerTechnician = async (req, res) => {
       rating: technician.rating,
       totalJobs: technician.totalJobs,
       isActive: technician.isActive,
+      // Wallet System
+      walletBalance: technician.walletBalance,
+      walletThreshold: technician.walletThreshold,
+      walletTransactions: technician.walletTransactions,
       registeredAt: new Date(),
       updatedAt: new Date()
     });
@@ -455,20 +459,20 @@ const changeTechnicianAvailability = async (req, res) => {
     }
 
     const technicianData = doc.data();
-    const isActive = technicianData.isActive;
-   
+    const currentStatus = technicianData.isActive;
+    const newStatus = !currentStatus;
 
     await technicianRef.update({
-      isActive: !isActive,
+      isActive: newStatus,
       updatedAt: new Date()
     });
     
     res.json({
       success: true,
-      message: `Technician availability updated to ${isActive ? 'active' : 'inactive'}`,
+      message: `Technician availability updated to ${newStatus ? 'active' : 'inactive'}`,
       data: {
         id: technicianId,
-        isActive: isActive,
+        isActive: newStatus,
         updatedAt: new Date()
       }
     });
@@ -730,6 +734,212 @@ const getPastRequestsByTechnician = async (req, res) => {
   }
 }
 
+// // get the total value of estimated price to get the precentage of 5% of each estimated price for deduct from the technician wallet
+// const getTotalWalletDeduction = async (technicianId) => {
+//   try {
+//     const snapshot = await db.collection('bookings')
+//       .where('technicianId', '==', technicianId)
+//       .where('paymentDetails.method', '==', 'cash')
+//       .where('status', '==', 'completed')
+//       .get();
+    
+//     let totalDeduction = 0;
+//     snapshot.forEach(doc => {
+//       const data = doc.data();
+//       if (data.priceEstimate) {
+//         const deduction = data.priceEstimate * 0.05;
+//         totalDeduction += deduction;
+//       }
+//     });
+    
+//     return totalDeduction;
+//   } catch (error) {
+//     console.error('Error calculating wallet deduction:', error);
+//     throw new Error('Failed to calculate wallet deduction');
+//   }
+// };
+
+// Deduct commission from technician wallet for cash payments
+const deductCommissionFromWallet = async (technicianId, amount, bookingId, description = 'Commission deduction') => {
+  try {
+    const technicianRef = collection.doc(technicianId);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      throw new Error('Technician not found');
+    }
+    
+    const technicianData = doc.data();
+    const currentBalance = technicianData.walletBalance || 0;
+    const commissionAmount = amount * 0.05; // 5% commission
+    const newBalance = currentBalance - commissionAmount;
+    
+    // Create transaction record
+    const transaction = {
+      id: `txn_${Date.now()}`,
+      type: 'commission_deduction',
+      amount: -commissionAmount,
+      balanceBefore: currentBalance,
+      balanceAfter: newBalance,
+      description: description,
+      bookingId: bookingId,
+      timestamp: new Date(),
+      status: 'completed'
+    };
+    
+    // Update wallet balance and add transaction
+    await technicianRef.update({
+      walletBalance: newBalance,
+      walletTransactions: [...(technicianData.walletTransactions || []), transaction],
+      updatedAt: new Date()
+    });
+    
+    console.log(`Commission deducted: LKR ${commissionAmount.toFixed(2)} from technician ${technicianId}`);
+    return { success: true, newBalance, commissionDeducted: commissionAmount, transaction };
+    
+  } catch (error) {
+    console.error('Error deducting commission:', error);
+    throw error;
+  }
+};
+
+// Add wallet balance (top-up)
+const addWalletBalance = async (technicianId, amount, description = 'Wallet top-up') => {
+  try {
+    const technicianRef = collection.doc(technicianId);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      throw new Error('Technician not found');
+    }
+    
+    const technicianData = doc.data();
+    const currentBalance = technicianData.walletBalance || 0;
+    const newBalance = currentBalance + amount;
+    
+    // Create transaction record
+    const transaction = {
+      id: `txn_${Date.now()}`,
+      type: 'top_up',
+      amount: amount,
+      balanceBefore: currentBalance,
+      balanceAfter: newBalance,
+      description: description,
+      timestamp: new Date(),
+      status: 'completed'
+    };
+    
+    // Update wallet balance and add transaction
+    await technicianRef.update({
+      walletBalance: newBalance,
+      walletTransactions: [...(technicianData.walletTransactions || []), transaction],
+      updatedAt: new Date()
+    });
+    
+    console.log(`Wallet topped up: LKR ${amount.toFixed(2)} for technician ${technicianId}`);
+    return { success: true, newBalance, amountAdded: amount, transaction };
+    
+  } catch (error) {
+    console.error('Error adding wallet balance:', error);
+    throw error;
+  }
+};
+
+// Get wallet balance and recent transactions
+const getWalletInfo = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    
+    if (!technicianId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician ID is required'
+      });
+    }
+    
+    const doc = await collection.doc(technicianId).get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+    
+    const data = doc.data();
+    const walletBalance = data.walletBalance || 0;
+    const walletThreshold = data.walletThreshold || -5000;
+    const transactions = data.walletTransactions || [];
+    
+    // Sort transactions by timestamp (newest first)
+    const sortedTransactions = transactions.sort((a, b) => 
+      new Date(b.timestamp) - new Date(a.timestamp)
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        walletBalance,
+        walletThreshold,
+        transactions: sortedTransactions,
+        isWalletCritical: walletBalance <= walletThreshold * 0.8,
+        isWalletWarning: walletBalance <= walletThreshold * 0.5 && walletBalance > walletThreshold * 0.8
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error fetching wallet info:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch wallet information'
+    });
+  }
+};
+
+// Top-up wallet endpoint
+const topUpWallet = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    const { amount, description } = req.body;
+    
+    if (!technicianId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician ID is required'
+      });
+    }
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid amount is required'
+      });
+    }
+    
+    const result = await addWalletBalance(
+      technicianId, 
+      parseFloat(amount), 
+      description || 'Wallet top-up'
+    );
+    
+    res.json({
+      success: true,
+      message: 'Wallet topped up successfully',
+      data: result
+    });
+    
+  } catch (error) {
+    console.error('Error in wallet top-up:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to top up wallet'
+    });
+  }
+};
+
+
+
+
 
 
 module.exports = {
@@ -742,5 +952,10 @@ module.exports = {
   changeTechnicianAvailability,
   testEndpoint,
   getBookingsByTechnician,
-  getPastRequestsByTechnician
+  getPastRequestsByTechnician,
+  // getTotalWalletDeduction,
+  deductCommissionFromWallet,
+  addWalletBalance,
+  getWalletInfo,
+  topUpWallet
 };
