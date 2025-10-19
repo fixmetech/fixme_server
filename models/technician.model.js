@@ -89,6 +89,11 @@ class Technician {
     this.completedJobs = 0;
     this.isActive = false; // Only active after approval
     
+    // Virtual Wallet System
+    this.walletBalance = 0.0; // Initialize with 0, can go negative for commissions
+    this.walletThreshold = -5000.0; // Maximum negative balance allowed
+    this.walletTransactions = []; // Array to store transaction history
+    
     // Additional fields for enhanced search
     this.reviews = [];
     this.averageResponseTime = 30; // minutes
