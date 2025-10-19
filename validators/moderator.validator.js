@@ -80,7 +80,7 @@ const moderatorUpdateSchema = Joi.object({
 });
 
 const technicianStatusUpdateSchema = Joi.object({
-  status: Joi.string().valid('active', 'suspended', 'probation').required(),
+  status: Joi.string().valid('active', 'suspended', 'probation', 'approved').required(),
   reason: Joi.string().max(500).optional(),
   moderatorComments: Joi.string().max(500).optional()
 });
