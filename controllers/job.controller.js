@@ -5,6 +5,10 @@ const JobRequest = require("../models/jobRequest.model");
 const {
   findNearbyTechnicians,
 } = require("../utils/findNearbyTechnicians.util");
+const {
+  sendJobRequestToTechnician,
+  notifyTechnicianSequentially,
+} = require("../utils/technicianNotification");
 const geofire = require("geofire-common");
 const collection = db.collection("jobRequests");
 
@@ -654,6 +658,9 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
     10000
   );
 
+  console.log("step02 done");
+  
+
   // Filter technicians by service category
   const filteredTechnicians = nearbyTechnicians.filter(
     (tech) => tech.serviceCategory === jobRequestData.serviceCategory
@@ -672,12 +679,31 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
   }
 
   // 03 - Assign the nearest technician
-  const selectedTechnician = filteredTechnicians[0];
-  const technicianId = selectedTechnician.id;
+  // const selectedTechnician = filteredTechnicians[0];
+  // const technicianId = selectedTechnician.id.trim();
+
+  // await sendJobRequestToTechnician(technicianId, "Customer", jobRequestId);
+
+  // Notify technicians sequentially
+  const assignedTechnicianId = await notifyTechnicianSequentially(
+    filteredTechnicians,
+    jobRequestId
+  );
+
+  console.log("step03 done");
+
+
+  if (!assignedTechnicianId) {
+    return res.status(404).json({
+      success: false,
+      message: "No technician accepted the job request",
+      data: { jobId: jobRequestId },
+    });
+  }
 
   // Update job request with technician assignment
   const updatedJobData = {
-    technicianId,
+    assignedTechnicianId,
     status: "confirmed",
     updatedAt: new Date().toISOString(),
   };
@@ -691,7 +717,7 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
   // Get technician details from users collection (assuming technicians are stored there)
   const technicianDoc = await db
     .collection("technicians")
-    .doc(technicianId)
+    .doc(assignedTechnicianId)
     .get();
 
   if (!technicianDoc.exists) {
@@ -700,7 +726,8 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
       error: "Assigned technician not found in database",
     });
   }
-
+  console.log("step04 done");
+  
   return res.status(200).json({
     success: true,
     message: "Job request created and technician assigned successfully",
@@ -710,7 +737,6 @@ exports.findNearestTechnician = asyncHandler(async (req, res) => {
         id: technicianDoc.id,
         ...technicianDoc.data(),
       },
-      distance: selectedTechnician.distance,
     },
   });
 });
@@ -729,10 +755,14 @@ exports.cancelJobRequest = async (req, res) => {
     return res.status(404).json({ error: "Job request not found" });
   }
 
-  // Update the job request status 
-  await jobRef.update({ status: "cancelled", updatedAt: new Date().toISOString() });
+  // Update the job request status
+  await jobRef.update({
+    status: "cancelled",
+    updatedAt: new Date().toISOString(),
+  });
 
-  return res.status(200).json({ 
+  return res.status(200).json({
     success: true,
-    message: "Job request cancelled successfully" });
+    message: "Job request cancelled successfully",
+  });
 };

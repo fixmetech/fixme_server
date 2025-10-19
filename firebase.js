@@ -23,6 +23,7 @@ const geoApp = admin.initializeApp({
 const db = admin.firestore();
 const rtdb = admin.database();
 const bucket = admin.storage().bucket();
+const msg = admin.messaging();
 
 const geoDb = geoApp.database();
 
@@ -56,4 +57,4 @@ async function testFirebaseConnection() {
 // Test connection on startup
 testFirebaseConnection();
 
-module.exports = { admin, db, rtdb, bucket, geoDb };
+module.exports = { admin, db, rtdb, bucket, geoDb, msg };
