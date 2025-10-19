@@ -453,6 +453,6 @@ module.exports = {
     getBookingsByTechnician,
     getAvailableTimeSlots,
     getScheduledBookingsByCustomerId,
-    getCompletedBookingsByCustomerAndTechnician
+    getCompletedBookingsByCustomerAndTechnician,
     updateBookingStatus
 };
