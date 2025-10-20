@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 
@@ -7,6 +8,9 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Serve static files for generated reports
+app.use('/files/reports', express.static(path.join(__dirname, 'generated_reports')));
 
 const serviceRoutes = require('./routes/service.route');
 const technicianRoutes = require('./routes/technician.route');
@@ -23,6 +27,7 @@ const jobRequestsRoute = require('./routes/job.route');
 const bookingRoutes = require('./routes/booking.router');
 const appointmentRoutes = require('./routes/appointment.route');
 const feedbackRoutes = require('./routes/feedback.route');
+const reportsRoutes = require('./routes/reports.route');
 
 app.use('/api/service_center', serviceRoutes);
 app.use('/api/technicians', technicianRoutes);
@@ -40,6 +45,7 @@ app.use('/api/jobs', jobRequestsRoute);
 app.use('/api/user', bookingRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // server start
 const PORT = process.env.PORT || 3000;
