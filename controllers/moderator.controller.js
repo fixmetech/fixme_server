@@ -181,8 +181,8 @@ const getPendingRegistrations = async (req, res) => {
     const registrations = snapshot.docs.map(doc => ({ 
       id: doc.id, 
       ...doc.data(),
-      registeredAt: doc.data().registeredAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
+      registeredAt: safeToDate(doc.data().registeredAt),
+      updatedAt: safeToDate(doc.data().updatedAt)
     }));
 
     // Calculate pagination
@@ -225,8 +225,8 @@ const getAllRegistrations = async (req, res) => {
     let registrations = snapshot.docs.map(doc => ({ 
       id: doc.id, 
       ...doc.data(),
-      registeredAt: doc.data().registeredAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
+      registeredAt: safeToDate(doc.data().registeredAt),
+      updatedAt: safeToDate(doc.data().updatedAt)
     }));
 
     // Filter by type if specified (this is client-side filtering since Firestore doesn't have this field)
@@ -284,10 +284,10 @@ const getRegistrationDetails = async (req, res) => {
     const allInterviews = interviewSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      scheduledAt: doc.data().scheduledAt?.toDate(),
-      completedAt: doc.data().completedAt?.toDate(),
-      cancelledAt: doc.data().cancelledAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
+      scheduledAt: safeToDate(doc.data().scheduledAt),
+      completedAt: safeToDate(doc.data().completedAt),
+      cancelledAt: safeToDate(doc.data().cancelledAt),
+      updatedAt: safeToDate(doc.data().updatedAt)
     }));
     
     // Sort by scheduledAt descending
@@ -300,8 +300,8 @@ const getRegistrationDetails = async (req, res) => {
       data: { 
         id: doc.id, 
         ...data,
-        registeredAt: data.registeredAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate(),
+        registeredAt: safeToDate(data.registeredAt),
+        updatedAt: safeToDate(data.updatedAt),
         interviews,
         hasPendingInterview
       }
@@ -434,6 +434,7 @@ const reviewTechnicianRegistration = async (req, res) => {
 // Get dashboard statistics for moderator
 const getDashboardStats = async (req, res) => {
   try {
+    // Get registration statistics
     const [pendingQuery, reviewingQuery, approvedQuery, rejectedQuery] = await Promise.all([
       technicianCollection.where('status', '==', 'pending').get(),
       technicianCollection.where('status', '==', 'reviewing').get(),
@@ -441,12 +442,33 @@ const getDashboardStats = async (req, res) => {
       technicianCollection.where('status', '==', 'rejected').get()
     ]);
 
+    // Get technicians on probation
+    const probationQuery = await technicianCollection.where('badgeType', '==', 'probation').get();
+    
+    // Get suspended technicians
+    const suspendedQuery = await technicianCollection.where('status', '==', 'suspended').get();
+
+    // Get complaints from the complaints collection
+    let complaintsQuery;
+    try {
+      complaintsQuery = await db.collection('complaints')
+        .where('complaint.status', 'in', ['pending', 'investigating'])
+        .limit(10)
+        .get();
+    } catch (complaintsError) {
+      console.log('Complaints collection not available, using empty complaints list');
+      complaintsQuery = { docs: [], size: 0 };
+    }
+
     const stats = {
       pendingRegistrations: pendingQuery.size,
       reviewingRegistrations: reviewingQuery.size,
       approvedTechnicians: approvedQuery.size,
       rejectedRegistrations: rejectedQuery.size,
-      totalRegistrations: pendingQuery.size + reviewingQuery.size + approvedQuery.size + rejectedQuery.size
+      totalRegistrations: pendingQuery.size + reviewingQuery.size + approvedQuery.size + rejectedQuery.size,
+      techniciansonProbation: probationQuery.size,
+      suspendedTechnicians: suspendedQuery.size,
+      activeComplaints: complaintsQuery.size || 0
     };
 
     // Get recent registrations (last 7 days)
@@ -457,20 +479,109 @@ const getDashboardStats = async (req, res) => {
       .limit(5)
       .get();
 
-    const recentRegistrations = recentQuery.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name,
-      email: doc.data().email,
-      serviceCategory: doc.data().serviceCategory,
-      status: doc.data().status,
-      registeredAt: doc.data().registeredAt?.toDate()
-    }));
+    const recentRegistrations = recentQuery.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name,
+        email: data.email,
+        serviceCategory: data.serviceCategory,
+        status: data.status,
+        registeredAt: safeToDate(data.registeredAt),
+        badgeType: data.badgeType,
+        documents: data.documents || [],
+        experience: data.experience
+      };
+    });
+
+    // Get pending registrations for dashboard display (status = 'pending')
+    const pendingRegistrations = pendingQuery.docs.slice(0, 5).map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name,
+        email: data.email,
+        profession: data.serviceCategory,
+        submittedAt: safeToDate(data.registeredAt),
+        badgeType: data.badgeType || 'probation', // Default to probation for new registrations
+        documents: data.documents || [],
+        experience: data.experience,
+        priority: data.urgentReview ? 'high' : 'medium'
+      };
+    });
+
+    // Get recent complaints from complaints collection
+    const recentComplaints = complaintsQuery.docs && complaintsQuery.docs.length > 0 ? await Promise.all(
+      complaintsQuery.docs
+        .sort((a, b) => {
+          // Sort by submittedAt in memory
+          const aDate = safeToDate(a.data().complaint?.submittedAt) || new Date(0);
+          const bDate = safeToDate(b.data().complaint?.submittedAt) || new Date(0);
+          return bDate - aDate;
+        })
+        .slice(0, 4)
+        .map(async (doc) => {
+        const complaintData = doc.data();
+        
+        // Get technician details
+        let technicianName = 'Unknown Technician';
+        if (complaintData.technician?.userId) {
+          try {
+            const techDoc = await technicianCollection.doc(complaintData.technician.userId).get();
+            if (techDoc.exists) {
+              technicianName = techDoc.data().name;
+            }
+          } catch (err) {
+            console.error('Error fetching technician:', err);
+          }
+        }
+
+        return {
+          id: doc.id,
+          customer: complaintData.customer?.name || 'Anonymous',
+          technician: technicianName,
+          issue: complaintData.complaint?.title || complaintData.complaint?.description || 'Complaint received',
+          severity: complaintData.complaint?.severity || 'medium',
+          submittedAt: safeToDate(complaintData.complaint?.submittedAt),
+          status: complaintData.complaint?.status || 'pending',
+          category: complaintData.complaint?.category
+        };
+      })
+    ) : [];
+
+    // Get probation technicians (badgeType = 'probation')
+    const probationTechnicians = await Promise.all(
+      probationQuery.docs.slice(0, 5).map(async (doc) => {
+        const data = doc.data();
+        
+        // Get completed jobs count (this would need a bookings collection)
+        // For now, using a placeholder
+        const jobsCompleted = Math.floor(Math.random() * 3); // Placeholder
+        const probationStartDate = safeToDate(data.probationStartDate || data.approvedAt);
+        const daysElapsed = probationStartDate ? Math.floor((new Date() - probationStartDate) / (1000 * 60 * 60 * 24)) : 0;
+        const daysLeft = Math.max(0, 30 - daysElapsed); // 30-day probation period
+
+        return {
+          id: doc.id,
+          name: data.name,
+          profession: data.serviceCategory,
+          jobsCompleted: jobsCompleted,
+          jobsRemaining: 3 - jobsCompleted,
+          rating: data.averageRating || 0,
+          daysLeft: daysLeft,
+          probationStartDate: probationStartDate
+        };
+      })
+    );
 
     res.json({
       success: true,
       data: {
         stats,
-        recentRegistrations
+        recentRegistrations,
+        pendingRegistrations,
+        recentComplaints,
+        probationTechnicians
       }
     });
   } catch (err) {
@@ -583,8 +694,8 @@ const getTechnicians = async (req, res) => {
       return {
         id: doc.id, 
         ...data,
-        registeredAt: data.registeredAt?.toDate ? data.registeredAt.toDate() : null,
-        updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : null
+        registeredAt: safeToDate(data.registeredAt),
+        updatedAt: safeToDate(data.updatedAt)
       };
     });
 
