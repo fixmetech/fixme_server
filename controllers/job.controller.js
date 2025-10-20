@@ -1,5 +1,6 @@
 // fixme_server/controllers/job.controller.js
 const { db } = require("../firebase");
+const { FieldValue } = require("firebase-admin/firestore");
 const Feedback = require("../models/feedback.model");
 const JobRequest = require("../models/jobRequest.model");
 const {
@@ -504,7 +505,7 @@ exports.verifyFinishPin = async (req, res) => {
     if (technicianId) {
       const techRef = db.collection("technicians").doc(technicianId);
       await techRef.update({
-        totalJobs: db.FieldValue.increment(1),
+        totalJobs: FieldValue.increment(1),
         updatedAt: nowIso,
       });
     }
