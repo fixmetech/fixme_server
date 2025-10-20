@@ -1137,6 +1137,184 @@ const topUpWallet = async (req, res) => {
 
 
 
+// Update technician earnings when a job/booking is completed
+const updateTechnicianEarnings = async (technicianId, amount, source = 'booking', bookingId = null, jobId = null) => {
+  try {
+    const technicianRef = collection.doc(technicianId);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      throw new Error('Technician not found');
+    }
+    
+    const technicianData = doc.data();
+    const commissionAmount = amount * 0.05; // 5% commission
+    const netAmount = amount - commissionAmount;
+    
+    // Get current month key for monthly breakdown
+    const currentMonth = new Date().toISOString().substring(0, 7); // "2025-10"
+    
+    // Calculate new earnings
+    const newTotalEarnings = (technicianData.totalEarnings || 0) + amount;
+    const newNetEarnings = (technicianData.netEarnings || 0) + netAmount;
+    const newTotalCommission = (technicianData.totalCommissionPaid || 0) + commissionAmount;
+    
+    // Create individual earning record
+    const earningRecord = {
+      id: `earning_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      source: source, // 'booking', 'job', 'tip'
+      amount: amount,
+      commission: commissionAmount,
+      netAmount: netAmount,
+      bookingId: bookingId,
+      jobId: jobId,
+      date: new Date(),
+      description: source === 'booking' ? 'Scheduled Booking' : 
+                   source === 'job' ? 'Instant Job Request' : 
+                   source === 'tip' ? 'Customer Tip' : 'Service Payment',
+      status: 'completed'
+    };
+    
+    // Update earnings breakdown
+    const earningsBreakdown = technicianData.earningsBreakdown || {
+      sources: [], // This will now store individual earning records
+      monthlyData: {}
+    };
+    
+    // Add new earning record to sources array
+    earningsBreakdown.sources = [...(earningsBreakdown.sources || []), earningRecord];
+    
+    // Update monthly breakdown
+    earningsBreakdown.monthlyData = earningsBreakdown.monthlyData || {};
+    const monthlyData = earningsBreakdown.monthlyData[currentMonth] || {
+      totalAmount: 0,
+      totalCommission: 0,
+      netAmount: 0,
+      totalJobs: 0
+    };
+    
+    earningsBreakdown.monthlyData[currentMonth] = {
+      totalAmount: monthlyData.totalAmount + amount,
+      totalCommission: monthlyData.totalCommission + commissionAmount,
+      netAmount: monthlyData.netAmount + netAmount,
+      totalJobs: monthlyData.totalJobs + 1
+    };
+    
+    // Update technician document
+    await technicianRef.update({
+      totalEarnings: newTotalEarnings,
+      netEarnings: newNetEarnings,
+      totalCommissionPaid: newTotalCommission,
+      earningsBreakdown: earningsBreakdown,
+      completedJobs: (technicianData.completedJobs || 0) + 1,
+      updatedAt: new Date()
+    });
+    
+    console.log(`Earnings updated for technician ${technicianId}: +LKR ${amount} (net: +LKR ${netAmount})`);
+    
+    return {
+      success: true,
+      totalEarnings: newTotalEarnings,
+      netEarnings: newNetEarnings,
+      commissionDeducted: commissionAmount,
+      earningsBreakdown: earningsBreakdown,
+      newEarningRecord: earningRecord
+    };
+    
+  } catch (error) {
+    console.error('Error updating technician earnings:', error);
+    throw error;
+  }
+};
+
+// Get technician earnings summary
+const getTechnicianEarnings = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    
+    if (!technicianId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician ID is required'
+      });
+    }
+    
+    const technicianRef = collection.doc(technicianId);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+    
+    const technicianData = doc.data();
+    
+    // Get individual earning records and sort by date (newest first)
+    const earningRecords = technicianData.earningsBreakdown?.sources || [];
+    const sortedEarnings = earningRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Calculate this month's earnings
+    const currentMonth = new Date().toISOString().substring(0, 7);
+    const monthlyData = technicianData.earningsBreakdown?.monthlyData || {};
+    const thisMonthData = monthlyData[currentMonth] || {
+      totalAmount: 0,
+      totalCommission: 0,
+      netAmount: 0,
+      totalJobs: 0
+    };
+    
+    // Calculate this year's earnings
+    const currentYear = new Date().getFullYear().toString();
+    const thisYearData = Object.entries(monthlyData)
+      .filter(([month, _]) => month.startsWith(currentYear))
+      .reduce((acc, [_, data]) => ({
+        totalAmount: acc.totalAmount + (data.totalAmount || 0),
+        totalCommission: acc.totalCommission + (data.totalCommission || 0),
+        netAmount: acc.netAmount + (data.netAmount || 0),
+        totalJobs: acc.totalJobs + (data.totalJobs || 0)
+      }), { totalAmount: 0, totalCommission: 0, netAmount: 0, totalJobs: 0 });
+    
+    const earningsSummary = {
+      totalEarnings: technicianData.totalEarnings || 0,
+      netEarnings: technicianData.netEarnings || 0,
+      totalCommissionPaid: technicianData.totalCommissionPaid || 0,
+      earningsBreakdown: {
+        sources: sortedEarnings, // Individual earning records
+        monthlyData: monthlyData // Monthly aggregated data
+      },
+      thisMonthEarnings: {
+        totalAmount: thisMonthData.totalAmount,
+        netAmount: thisMonthData.netAmount,
+        totalJobs: thisMonthData.totalJobs
+      },
+      thisYearEarnings: {
+        totalAmount: thisYearData.totalAmount,
+        netAmount: thisYearData.netAmount,
+        totalJobs: thisYearData.totalJobs
+      },
+      completedJobs: technicianData.completedJobs || 0,
+      walletBalance: technicianData.walletBalance || 0,
+      averageJobValue: technicianData.completedJobs > 0 
+        ? (technicianData.totalEarnings || 0) / (technicianData.completedJobs || 1)
+        : 0
+    };
+    
+    res.json({
+      success: true,
+      data: earningsSummary
+    });
+    
+  } catch (error) {
+    console.error('Error getting technician earnings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get technician earnings'
+    });
+  }
+};
+
 module.exports = {
   registerTechnician,
   getAllTechnicians,
@@ -1155,5 +1333,7 @@ module.exports = {
   deductCommissionFromWallet,
   addWalletBalance,
   getWalletInfo,
-  topUpWallet
+  topUpWallet,
+  updateTechnicianEarnings,
+  getTechnicianEarnings
 };

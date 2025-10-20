@@ -393,25 +393,36 @@ const updateBookingStatus = async (req, res) => {
             // Handle commission deduction for cash payments
             if (bookingData.paymentDetails && bookingData.paymentDetails.method === 'cash') {
                 try {
-                    const { deductCommissionFromWallet } = require('./technician.controller');
+                    const { deductCommissionFromWallet, updateTechnicianEarnings } = require('./technician.controller');
                     const amount = finalPrice || bookingData.priceEstimate || 0;
                     
                     if (amount > 0) {
-                        const result = await deductCommissionFromWallet(
+                        // Update technician earnings (this tracks total and net earnings)
+                        const earningsResult = await updateTechnicianEarnings(
+                            bookingData.technicianId, 
+                            amount, 
+                            'booking',
+                            bookingId
+                        );
+                        
+                        // Deduct commission from wallet
+                        const walletResult = await deductCommissionFromWallet(
                             bookingData.technicianId, 
                             amount, 
                             bookingId,
-                            `Commission deduction for booking ${bookingId}`
+                            `Commission deduction for booking ${bookingId} - ${bookingData.serviceType || 'Service'}`
                         );
                         
-                        updateData.commissionDeducted = result.commissionDeducted;
-                        updateData.walletTransaction = result.transaction;
+                        updateData.commissionDeducted = walletResult.commissionDeducted;
+                        updateData.walletTransaction = walletResult.transaction;
+                        updateData.earningsUpdated = earningsResult;
+                        updateData.earningRecordId = earningsResult.newEarningRecord?.id;
                         
-                        console.log(`Commission deducted for booking ${bookingId}: LKR ${result.commissionDeducted}`);
+                        console.log(`Booking completed: LKR ${amount}, Commission: LKR ${walletResult.commissionDeducted}, Net: LKR ${amount - walletResult.commissionDeducted}`);
                     }
                 } catch (walletError) {
-                    console.error('Error deducting commission:', walletError);
-                    // Continue with booking update even if wallet deduction fails
+                    console.error('Error processing booking completion:', walletError);
+                    // Continue with booking update even if wallet/earnings update fails
                     updateData.commissionError = walletError.message;
                 }
             }

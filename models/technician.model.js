@@ -94,6 +94,17 @@ class Technician {
     this.walletThreshold = -5000.0; // Maximum negative balance allowed
     this.walletTransactions = []; // Array to store transaction history
     
+    // Earnings Tracking System
+    this.totalEarnings = 0.0; // Total gross earnings from all jobs/bookings
+    this.netEarnings = 0.0; // Net earnings after commission deductions
+    this.totalCommissionPaid = 0.0; // Total commission paid to platform
+    this.earningsBreakdown = {
+      fromBookings: 0.0, // Earnings from scheduled bookings
+      fromJobs: 0.0, // Earnings from instant job requests
+      fromTips: 0.0, // Tips received
+      monthlyEarnings: {} // Monthly breakdown: { "2025-10": 1500.0, "2025-11": 2000.0 }
+    };
+    
     // Additional fields for enhanced search
     this.reviews = [];
     this.averageResponseTime = 30; // minutes
