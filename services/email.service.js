@@ -30,18 +30,27 @@ class EmailService {
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASSWORD // Use App Password for Gmail
-        }
+        },
+        // Add timeout settings to prevent hanging
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 5000,    // 5 seconds
+        socketTimeout: 10000      // 10 seconds
       });
 
-      // Verify connection
-      this.transporter.verify((error, success) => {
-        if (error) {
-          console.error('Email transporter verification failed:', error);
-          this.transporter = null; // Reset transporter if verification fails
-        } else {
-          console.log('Email service initialized successfully');
+      // Verify connection with timeout - don't block if it fails
+      setTimeout(() => {
+        if (this.transporter) {
+          this.transporter.verify((error, success) => {
+            if (error) {
+              console.error('Email transporter verification failed:', error);
+              console.log('Email service will continue without verification - emails may not work');
+              // Don't reset transporter, keep it for potential future use
+            } else {
+              console.log('Email service initialized successfully');
+            }
+          });
         }
-      });
+      }, 1000); // Delay verification to not block startup
     } catch (error) {
       console.error('Failed to initialize email transporter:', error);
       this.transporter = null;
