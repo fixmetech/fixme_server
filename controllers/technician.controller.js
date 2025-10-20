@@ -725,7 +725,7 @@ const getPastRequestsByTechnician = async (req, res) => {
     }
 
     // Alternative approach: Use separate queries to avoid composite index
-    const statuses = ["completed", "rejected", "cancelled"];
+    const statuses = ["completed", "rejected", "cancelled", "confirmed", "pending"];
     const allRequests = [];
 
     // Execute queries for each status separately
