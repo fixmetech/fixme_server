@@ -864,3 +864,55 @@ exports.updateJobStatus = async (req, res) => {
       .json({ success: false, error: "Internal server error" });
   }
 };
+
+exports.getOnGoingJobsByTechnicianId = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+
+    if (!technicianId) {
+      return res.status(400).json({ success: false, error: "Missing technicianId" });
+    }
+
+    // Step 1: Get all jobs for this technician
+    const jobRequestsSnapshot = await db
+      .collection("jobRequests")
+      .where("technicianId", "==", technicianId)
+      .get();
+
+    if (jobRequestsSnapshot.empty) {
+      return res.status(200).json({
+        success: true,
+        message: `No jobs found for technicianId: ${technicianId}`,
+        data: [],
+        count: 0,
+      });
+    }
+
+    // Step 2: Filter locally (avoid Firestore indexing issues)
+    const jobRequests = jobRequestsSnapshot.docs
+      .map((doc) => ({
+        jobId: doc.id,
+        ...doc.data(),
+      }))
+      .filter(
+        (job) => 
+          job.status &&
+          job.status.toLowerCase() !== "completed" &&
+          job.status.toLowerCase() !== "cancelled"
+      );
+
+    // Step 3: Send response
+    return res.status(200).json({
+      success: true,
+      message: `Found ${jobRequests.length} ongoing jobs for technicianId: ${technicianId}`,
+      data: jobRequests,
+      count: jobRequests.length,
+    });
+  } catch (err) {
+    console.error("Error fetching ongoing jobs:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+};
