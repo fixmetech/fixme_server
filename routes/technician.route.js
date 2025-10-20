@@ -12,7 +12,6 @@ const {
   getBookingsByTechnician,
   getPastRequestsByTechnician,
   saveFCMToken,
-  testEndpoint,
   sendJobRequestToTechnician,
   jobAcceptOrReject,
   getWalletInfo,
@@ -28,7 +27,7 @@ const {
 } = require("../controllers/addSpecialities.controller");
 
 const {
-  getTechnicianProfileById,
+  getTechnicianProfileById, 
   getTechnicianProfileByEmail,
 } = require("../controllers/technician.profile.controller");
 

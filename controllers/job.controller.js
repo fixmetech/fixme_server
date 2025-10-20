@@ -1,5 +1,6 @@
 // fixme_server/controllers/job.controller.js
 const { db } = require("../firebase");
+const { FieldValue } = require("firebase-admin/firestore");
 const Feedback = require("../models/feedback.model");
 const JobRequest = require("../models/jobRequest.model");
 const {
@@ -504,7 +505,7 @@ exports.verifyFinishPin = async (req, res) => {
     if (technicianId) {
       const techRef = db.collection("technicians").doc(technicianId);
       await techRef.update({
-        totalJobs: db.FieldValue.increment(1),
+        totalJobs: FieldValue.increment(1),
         updatedAt: nowIso,
       });
     }
@@ -814,48 +815,52 @@ exports.cancelJobRequest = async (req, res) => {
 };
 
 exports.updateJobStatus = async (req, res) => {
-  async (req, res) => {
-    try {
-      const { jobId } = req.params;
-      const { status } = req.body;
+  try {
+    const { jobId } = req.params;
+    const { status } = req.body;
+    //console.log("step0");
 
-      if (!jobId) {
-        return res.status(400).json({ success: false, error: "Missing jobId" });
-      }
-
-      if (!status) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Missing status" });
-      }
-
-      const jobRef = db.collection("jobRequests").doc(jobId);
-      const snap = await jobRef.get();
-
-      if (!snap.exists) {
-        return res
-          .status(404)
-          .json({ success: false, error: "Job request not found" });
-      }
-
-      // Update status
-      await jobRef.update({
-        status: status,
-        updatedAt: new Date().toISOString(),
-      });
-
-      const updatedJob = await jobRef.get();
-
-      return res.json({
-        success: true,
-        message: `Job status updated to '${status}'`,
-        data: updatedJob.data(),
-      });
-    } catch (err) {
-      console.error("Error updating job status:", err);
-      return res
-        .status(500)
-        .json({ success: false, error: "Internal server error" });
+    if (!jobId) {
+      return res.status(400).json({ success: false, error: "Missing jobId" });
     }
-  };
+    //console.log("step1");
+
+    if (!status) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing status" });
+    }
+
+    const jobRef = db.collection("jobRequests").doc(jobId);
+    const snap = await jobRef.get();
+    //console.log("step2");
+
+    if (!snap.exists) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Job request not found" });
+    }
+
+    //console.log("step3");
+
+    // Update status
+    await jobRef.update({
+      status: status,
+      updatedAt: new Date().toISOString(),
+    });
+    //console.log("step4");
+
+    const updatedJob = await jobRef.get();
+
+    return res.json({
+      success: true,
+      message: `Job status updated to '${status}'`,
+      data: updatedJob.data(),
+    });
+  } catch (err) {
+    console.error("Error updating job status:", err);
+    return res
+      .status(500)
+      .json({ success: false, error: "Internal server error" });
+  }
 };
