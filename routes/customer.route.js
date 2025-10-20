@@ -3,6 +3,7 @@ const { verifyFirebaseToken } = require("../utils/middleware/auth.middleware");
 const router = express.Router();
 const {
   getProfile,
+  getBaseInfo,
   updateProfile,
   deleteProfile,
   getProperties,
@@ -18,6 +19,8 @@ router
   .get(getProfile)
   .put(updateProfile)
   .delete(deleteProfile); 
+
+router.get("/base-info/:customerId", getBaseInfo);
 
 router
   .route("/profile/:customerId/property/:propertyId")

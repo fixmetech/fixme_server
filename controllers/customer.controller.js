@@ -45,6 +45,26 @@ const getProfile = asyncHandler(async (req, res) => {
   res.status(200).json({ id: doc.id, ...doc.data() });
 });
 
+const getBaseInfo = asyncHandler(async (req, res) => {
+  const { customerId } = req.params;
+
+  validateUserId(customerId);
+  const doc = await validateCustomerAccess(customerId);
+
+  const data = doc.data();
+  
+  // Return only basic information: name, email, phone
+  const baseInfo = {
+    name: data.firstName + ' ' + data.lastName || '',
+    email: data.email || '',
+    phone: data.phone || ''
+  };
+  res.status(200).json({
+    success: true,
+    data: baseInfo
+  });
+});
+
 const updateProfile = asyncHandler(async (req, res) => {
   const { customerId } = req.params;
   const data = req.body;
@@ -357,6 +377,7 @@ const deleteProperty = asyncHandler(async (req, res) => {
 
 module.exports = {
   getProfile,
+  getBaseInfo,
   updateProfile,
   deleteProfile,
   getProperties,

@@ -10,7 +10,6 @@ const findNearbyTechnicians = async (lat, lng, radiusInM) => {
     const techniciansRef = geoDb.ref('technicians');
 
     const matchingTechs = [];
-    
     // Process each geohash bound
     for (const b of bounds) {
       const query = techniciansRef
@@ -38,7 +37,6 @@ const findNearbyTechnicians = async (lat, lng, radiusInM) => {
     const uniqueTechs = matchingTechs.filter((tech, index, self) => 
       index === self.findIndex(t => t.id === tech.id)
     );
-
     return uniqueTechs.sort((a, b) => a.distance - b.distance);
   } catch (error) {
     console.error('Error finding nearby technicians:', error);

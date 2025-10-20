@@ -7,6 +7,8 @@ class Technician {
     dateOfBirth,
     gender,
     nicNumber,
+    experience,
+    languages,
     serviceCategory,
     specializations,
     serviceDescription,
@@ -19,7 +21,12 @@ class Technician {
     idProofBackUrl,
     profilePictureUrl,
     verificationType,
-    verificationDocuments
+    verificationDocuments,
+    // New fields for search functionality
+    visitingFee,
+    location,
+    availability,
+    workingHours
   }) {
     this.name = name;
     this.email = email;
@@ -48,6 +55,28 @@ class Technician {
       applicationType: verificationType || null,
       applicationReason: null
     };
+    
+    // New fields for search functionality
+    this.visitingFee = visitingFee || Math.floor(Math.random() * 1000) + 300; // Default random fee for demo
+    this.languages = languages || ['English']; // Languages spoken
+    this.location = location || {
+      latitude: null,
+      longitude: null,
+      address: address,
+      city: null,
+      state: null
+    };
+    this.availability = availability || {
+      isAvailable: true,
+      availableDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      busyUntil: null
+    };
+    this.workingHours = workingHours || {
+      start: '08:00',
+      end: '18:00',
+      timezone: 'Asia/Colombo'
+    };
+    
     this.role = 'technician';
     this.status = 'pending'; // pending, approved, rejected
     this.registeredAt = new Date();
@@ -57,7 +86,20 @@ class Technician {
     this.rejectedAt = null;
     this.rating = 0;
     this.totalJobs = 0;
+    this.completedJobs = 0;
     this.isActive = false; // Only active after approval
+    
+    // Virtual Wallet System
+    this.walletBalance = 0.0; // Initialize with 0, can go negative for commissions
+    this.walletThreshold = -5000.0; // Maximum negative balance allowed
+    this.walletTransactions = []; // Array to store transaction history
+    
+    // Additional fields for enhanced search
+    this.reviews = [];
+    this.averageResponseTime = 30; // minutes
+    this.tags = specializations || []; // Searchable tags
+    this.experienceYears = experience || 0;
+    this.certifications = [];
   }
 }
 

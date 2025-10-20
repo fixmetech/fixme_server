@@ -1,6 +1,7 @@
 const { db } = require('../firebase');
 const bcrypt = require('bcryptjs');
 const Moderator = require('../models/moderator.model');
+const emailService = require('../services/email.service');
 const { 
   moderatorRegistrationSchema, 
   moderatorLoginSchema, 
@@ -13,6 +14,21 @@ const {
   verifyDocumentAccess, 
   getDocumentMetadata 
 } = require('../utils/document.util');
+
+// Utility function to safely convert Firestore timestamps to JavaScript dates
+const safeToDate = (timestamp) => {
+  if (!timestamp) return null;
+  
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  } else if (timestamp instanceof Date) {
+    return timestamp;
+  } else if (typeof timestamp === 'string') {
+    return new Date(timestamp);
+  }
+  
+  return null;
+};
 
 const moderatorCollection = db.collection('moderators');
 const technicianCollection = db.collection('technicians');
@@ -165,8 +181,8 @@ const getPendingRegistrations = async (req, res) => {
     const registrations = snapshot.docs.map(doc => ({ 
       id: doc.id, 
       ...doc.data(),
-      registeredAt: doc.data().registeredAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
+      registeredAt: safeToDate(doc.data().registeredAt),
+      updatedAt: safeToDate(doc.data().updatedAt)
     }));
 
     // Calculate pagination
@@ -209,8 +225,8 @@ const getAllRegistrations = async (req, res) => {
     let registrations = snapshot.docs.map(doc => ({ 
       id: doc.id, 
       ...doc.data(),
-      registeredAt: doc.data().registeredAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
+      registeredAt: safeToDate(doc.data().registeredAt),
+      updatedAt: safeToDate(doc.data().updatedAt)
     }));
 
     // Filter by type if specified (this is client-side filtering since Firestore doesn't have this field)
@@ -258,13 +274,36 @@ const getRegistrationDetails = async (req, res) => {
     }
     
     const data = doc.data();
+    
+    // Get interview information for this registration
+    const { checkPendingInterviews } = require('./interview.controller');
+    const interviewSnapshot = await db.collection('interviews')
+      .where('registrationId', '==', id)
+      .get();
+    
+    const allInterviews = interviewSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      scheduledAt: safeToDate(doc.data().scheduledAt),
+      completedAt: safeToDate(doc.data().completedAt),
+      cancelledAt: safeToDate(doc.data().cancelledAt),
+      updatedAt: safeToDate(doc.data().updatedAt)
+    }));
+    
+    // Sort by scheduledAt descending
+    const interviews = allInterviews.sort((a, b) => b.scheduledAt - a.scheduledAt);
+    
+    const hasPendingInterview = await checkPendingInterviews(id);
+    
     res.json({
       success: true,
       data: { 
         id: doc.id, 
         ...data,
-        registeredAt: data.registeredAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate()
+        registeredAt: safeToDate(data.registeredAt),
+        updatedAt: safeToDate(data.updatedAt),
+        interviews,
+        hasPendingInterview
       }
     });
   } catch (err) {
@@ -296,6 +335,18 @@ const reviewTechnicianRegistration = async (req, res) => {
       return res.status(404).json({ 
         success: false,
         error: 'Registration not found' 
+      });
+    }
+
+    // Check for pending interviews before allowing final decision
+    const { checkPendingInterviews } = require('./interview.controller');
+    const hasPendingInterview = await checkPendingInterviews(id);
+    
+    if (hasPendingInterview && (value.status === 'approved' || value.status === 'rejected')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot make final decision while there are pending interviews. Please complete or cancel the interview first.',
+        code: 'PENDING_INTERVIEW_BLOCK'
       });
     }
 
@@ -332,6 +383,34 @@ const reviewTechnicianRegistration = async (req, res) => {
     // Create notification for technician
     await createTechnicianNotification(id, value.status, value.moderatorComments, value.badgeType);
 
+    // Send email notification to technician
+    try {
+      const technicianData = doc.data();
+      const technicianEmail = technicianData.email;
+      const technicianName = technicianData.name || 'Technician';
+
+      if (technicianEmail) {
+        if (value.status === 'approved') {
+          await emailService.sendApprovalEmail(
+            technicianEmail,
+            technicianName,
+            value.badgeType,
+            value.moderatorComments
+          );
+        } else if (value.status === 'rejected') {
+          await emailService.sendRejectionEmail(
+            technicianEmail,
+            technicianName,
+            value.rejectionReason || value.moderatorComments,
+            value.moderatorComments
+          );
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send email notification:', emailError);
+      // Don't fail the request if email fails
+    }
+
     res.json({
       success: true,
       message: `Registration ${value.status} successfully`,
@@ -355,6 +434,7 @@ const reviewTechnicianRegistration = async (req, res) => {
 // Get dashboard statistics for moderator
 const getDashboardStats = async (req, res) => {
   try {
+    // Get registration statistics
     const [pendingQuery, reviewingQuery, approvedQuery, rejectedQuery] = await Promise.all([
       technicianCollection.where('status', '==', 'pending').get(),
       technicianCollection.where('status', '==', 'reviewing').get(),
@@ -362,12 +442,33 @@ const getDashboardStats = async (req, res) => {
       technicianCollection.where('status', '==', 'rejected').get()
     ]);
 
+    // Get technicians on probation
+    const probationQuery = await technicianCollection.where('badgeType', '==', 'probation').get();
+    
+    // Get suspended technicians
+    const suspendedQuery = await technicianCollection.where('status', '==', 'suspended').get();
+
+    // Get complaints from the complaints collection
+    let complaintsQuery;
+    try {
+      complaintsQuery = await db.collection('complaints')
+        .where('complaint.status', 'in', ['pending', 'investigating'])
+        .limit(10)
+        .get();
+    } catch (complaintsError) {
+      console.log('Complaints collection not available, using empty complaints list');
+      complaintsQuery = { docs: [], size: 0 };
+    }
+
     const stats = {
       pendingRegistrations: pendingQuery.size,
       reviewingRegistrations: reviewingQuery.size,
       approvedTechnicians: approvedQuery.size,
       rejectedRegistrations: rejectedQuery.size,
-      totalRegistrations: pendingQuery.size + reviewingQuery.size + approvedQuery.size + rejectedQuery.size
+      totalRegistrations: pendingQuery.size + reviewingQuery.size + approvedQuery.size + rejectedQuery.size,
+      techniciansonProbation: probationQuery.size,
+      suspendedTechnicians: suspendedQuery.size,
+      activeComplaints: complaintsQuery.size || 0
     };
 
     // Get recent registrations (last 7 days)
@@ -378,20 +479,109 @@ const getDashboardStats = async (req, res) => {
       .limit(5)
       .get();
 
-    const recentRegistrations = recentQuery.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name,
-      email: doc.data().email,
-      serviceCategory: doc.data().serviceCategory,
-      status: doc.data().status,
-      registeredAt: doc.data().registeredAt?.toDate()
-    }));
+    const recentRegistrations = recentQuery.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name,
+        email: data.email,
+        serviceCategory: data.serviceCategory,
+        status: data.status,
+        registeredAt: safeToDate(data.registeredAt),
+        badgeType: data.badgeType,
+        documents: data.documents || [],
+        experience: data.experience
+      };
+    });
+
+    // Get pending registrations for dashboard display (status = 'pending')
+    const pendingRegistrations = pendingQuery.docs.slice(0, 5).map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name,
+        email: data.email,
+        profession: data.serviceCategory,
+        submittedAt: safeToDate(data.registeredAt),
+        badgeType: data.badgeType || 'probation', // Default to probation for new registrations
+        documents: data.documents || [],
+        experience: data.experience,
+        priority: data.urgentReview ? 'high' : 'medium'
+      };
+    });
+
+    // Get recent complaints from complaints collection
+    const recentComplaints = complaintsQuery.docs && complaintsQuery.docs.length > 0 ? await Promise.all(
+      complaintsQuery.docs
+        .sort((a, b) => {
+          // Sort by submittedAt in memory
+          const aDate = safeToDate(a.data().complaint?.submittedAt) || new Date(0);
+          const bDate = safeToDate(b.data().complaint?.submittedAt) || new Date(0);
+          return bDate - aDate;
+        })
+        .slice(0, 4)
+        .map(async (doc) => {
+        const complaintData = doc.data();
+        
+        // Get technician details
+        let technicianName = 'Unknown Technician';
+        if (complaintData.technician?.userId) {
+          try {
+            const techDoc = await technicianCollection.doc(complaintData.technician.userId).get();
+            if (techDoc.exists) {
+              technicianName = techDoc.data().name;
+            }
+          } catch (err) {
+            console.error('Error fetching technician:', err);
+          }
+        }
+
+        return {
+          id: doc.id,
+          customer: complaintData.customer?.name || 'Anonymous',
+          technician: technicianName,
+          issue: complaintData.complaint?.title || complaintData.complaint?.description || 'Complaint received',
+          severity: complaintData.complaint?.severity || 'medium',
+          submittedAt: safeToDate(complaintData.complaint?.submittedAt),
+          status: complaintData.complaint?.status || 'pending',
+          category: complaintData.complaint?.category
+        };
+      })
+    ) : [];
+
+    // Get probation technicians (badgeType = 'probation')
+    const probationTechnicians = await Promise.all(
+      probationQuery.docs.slice(0, 5).map(async (doc) => {
+        const data = doc.data();
+        
+        // Get completed jobs count (this would need a bookings collection)
+        // For now, using a placeholder
+        const jobsCompleted = Math.floor(Math.random() * 3); // Placeholder
+        const probationStartDate = safeToDate(data.probationStartDate || data.approvedAt);
+        const daysElapsed = probationStartDate ? Math.floor((new Date() - probationStartDate) / (1000 * 60 * 60 * 24)) : 0;
+        const daysLeft = Math.max(0, 30 - daysElapsed); // 30-day probation period
+
+        return {
+          id: doc.id,
+          name: data.name,
+          profession: data.serviceCategory,
+          jobsCompleted: jobsCompleted,
+          jobsRemaining: 3 - jobsCompleted,
+          rating: data.averageRating || 0,
+          daysLeft: daysLeft,
+          probationStartDate: probationStartDate
+        };
+      })
+    );
 
     res.json({
       success: true,
       data: {
         stats,
-        recentRegistrations
+        recentRegistrations,
+        pendingRegistrations,
+        recentComplaints,
+        probationTechnicians
       }
     });
   } catch (err) {
@@ -438,8 +628,11 @@ const updateTechnicianStatus = async (req, res) => {
     if (value.status === 'suspended') {
       updateData.isActive = false;
       updateData.suspendedAt = new Date();
-      updateData.suspensionReason = value.reason;
-    } else if (value.status === 'active') {
+      const suspensionReason = value.moderatorComments || value.reason;
+      if (suspensionReason) {
+        updateData.suspensionReason = suspensionReason;
+      }
+    } else if (value.status === 'approved' || value.status === 'active') {
       updateData.isActive = true;
       updateData.suspendedAt = null;
       updateData.suspensionReason = null;
@@ -447,8 +640,9 @@ const updateTechnicianStatus = async (req, res) => {
 
     await technicianRef.update(updateData);
 
-    // Create notification for technician
-    await createTechnicianStatusNotification(id, value.status, value.reason);
+    // Create notification for technician (non-blocking)
+    createTechnicianStatusNotification(id, value.status, value.moderatorComments || value.reason)
+      .catch(err => console.error('Failed to create notification:', err));
 
     res.json({
       success: true,
@@ -463,30 +657,131 @@ const updateTechnicianStatus = async (req, res) => {
     console.error('Update technician status error:', err);
     res.status(500).json({ 
       success: false,
-      error: 'Failed to update technician status' 
+      error: 'Failed to update technician status',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
 
-// Get all active technicians for management
+// Get all active technicians for management with ratings and badge info
 const getTechnicians = async (req, res) => {
   try {
     const { status, badge, serviceCategory, page = 1, limit = 10 } = req.query;
     
-    let query = technicianCollection.orderBy('registeredAt', 'desc');
+    let query = technicianCollection;
     
-    // Apply filters
+    // Apply filters - but avoid orderBy with where clauses that might cause index issues
     if (status && status !== 'all') {
       query = query.where('status', '==', status);
     }
     
     const snapshot = await query.get();
-    let technicians = snapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data(),
-      registeredAt: doc.data().registeredAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
-    }));
+    if (snapshot.empty) {
+      return res.json({
+        success: true,
+        data: [],
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: parseInt(limit)
+        }
+      });
+    }
+
+    let technicians = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id, 
+        ...data,
+        registeredAt: safeToDate(data.registeredAt),
+        updatedAt: safeToDate(data.updatedAt)
+      };
+    });
+
+    // Sort by registeredAt in memory since we can't use orderBy with where clauses
+    technicians.sort((a, b) => {
+      const dateA = a.registeredAt || new Date(0);
+      const dateB = b.registeredAt || new Date(0);
+      return dateB - dateA; // Descending order (newest first)
+    });
+
+    // Fetch ratings for all technicians (limit to avoid too many concurrent requests)
+    const technicianIds = technicians.map(tech => tech.id);
+    const ratingMap = {};
+    
+    // Process technicians in batches to avoid overwhelming the database
+    const batchSize = 10;
+    for (let i = 0; i < technicianIds.length; i += batchSize) {
+      const batch = technicianIds.slice(i, i + batchSize);
+      const ratingPromises = batch.map(async (techId) => {
+        try {
+          const feedbackSnapshot = await db.collection('technicianFeedback')
+            .where('technicianId', '==', techId)
+            .get();
+          
+          if (feedbackSnapshot.empty) {
+            return { technicianId: techId, rating: 0, reviewCount: 0 };
+          }
+          
+          let totalRating = 0;
+          let count = 0;
+          feedbackSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.rating && typeof data.rating === 'number') {
+              totalRating += data.rating;
+              count++;
+            }
+          });
+          
+          const averageRating = count > 0 ? (totalRating / count) : 0;
+          return { technicianId: techId, rating: Math.round(averageRating * 10) / 10, reviewCount: count };
+        } catch (error) {
+          console.error(`Error fetching ratings for technician ${techId}:`, error);
+          return { technicianId: techId, rating: 0, reviewCount: 0 };
+        }
+      });
+
+      const batchRatings = await Promise.all(ratingPromises);
+      batchRatings.forEach(r => {
+        ratingMap[r.technicianId] = { rating: r.rating, reviewCount: r.reviewCount };
+      });
+    }
+
+    // Enhance technicians with rating data and ensure badge type is set
+    technicians = technicians.map(tech => {
+      const ratingData = ratingMap[tech.id] || { rating: 0, reviewCount: 0 };
+      
+      // Determine badge type if not set
+      let badgeType = tech.badgeType || tech.verificationType;
+      if (!badgeType) {
+        // Default logic based on verification documents
+        if (tech.verificationDocuments && tech.verificationDocuments.certificates && tech.verificationDocuments.certificates.length > 0) {
+          badgeType = 'professional';
+        } else if (tech.experience && tech.experience > 2) {
+          badgeType = 'experience';
+        } else {
+          badgeType = 'probation';
+        }
+      }
+
+      return {
+        ...tech,
+        rating: ratingData.rating,
+        reviewCount: ratingData.reviewCount,
+        badgeType: badgeType,
+        // Ensure required fields have default values
+        name: tech.name || 'Unknown',
+        email: tech.email || 'No email',
+        phone: tech.phone || 'No phone',
+        serviceCategory: tech.serviceCategory || 'General',
+        totalJobs: tech.totalJobs || 0,
+        completedJobs: tech.completedJobs || 0,
+        cancelledJobs: tech.cancelledJobs || 0,
+        address: tech.address || 'Not provided',
+        status: tech.status || 'pending'
+      };
+    });
 
     // Client-side filtering for fields not indexed in Firestore
     if (badge && badge !== 'all') {
@@ -515,9 +810,229 @@ const getTechnicians = async (req, res) => {
     });
   } catch (err) {
     console.error('Get technicians error:', err);
+    console.error('Error stack:', err.stack);
     res.status(500).json({ 
       success: false,
-      error: 'Failed to fetch technicians' 
+      error: `Failed to fetch technicians: ${err.message}`,
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+};
+
+// Get detailed technician information with feedback and complaints
+const getTechnicianDetails = async (req, res) => {
+  try {
+    console.log('Getting technician details for ID:', req.params.id);
+    const { id } = req.params;
+    
+    // Get technician data
+    const technicianDoc = await technicianCollection.doc(id).get();
+    
+    if (!technicianDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+    
+    // Safely handle date conversions for technician data
+    const data = technicianDoc.data();
+    const technicianData = {
+      id: technicianDoc.id,
+      ...data,
+      registeredAt: safeToDate(data.registeredAt),
+      updatedAt: safeToDate(data.updatedAt)
+    };
+    
+    // Get technician feedback/reviews
+    const feedbackSnapshot = await db.collection('technicianFeedback')
+      .where('technicianId', '==', id)
+      .get();
+    
+    const feedback = [];
+    let totalRating = 0;
+    let ratingCount = 0;
+    
+    // Get customer names for feedback
+    const customerIds = [];
+    feedbackSnapshot.forEach(doc => {
+      const data = doc.data();
+      
+      feedback.push({
+        id: doc.id,
+        ...data,
+        createdAt: safeToDate(data.createdAt)
+      });
+      
+      if (data.customerId) {
+        customerIds.push(data.customerId);
+      }
+      
+      if (data.rating && typeof data.rating === 'number') {
+        totalRating += data.rating;
+        ratingCount++;
+      }
+    });
+    
+    // Fetch customer names
+    const customerNamesMap = {};
+    if (customerIds.length > 0) {
+      const uniqueCustomerIds = [...new Set(customerIds)];
+      const customerPromises = uniqueCustomerIds.map(async (customerId) => {
+        try {
+          const customerDoc = await db.collection('users').doc(customerId).get();
+          if (customerDoc.exists) {
+            const customerData = customerDoc.data();
+            const name = `${customerData.firstName || ''} ${customerData.lastName || ''}`.trim() || 'Customer';
+            return { id: customerId, name };
+          }
+        } catch (error) {
+          console.error(`Error fetching customer ${customerId}:`, error);
+        }
+        return { id: customerId, name: 'Customer' };
+      });
+      
+      const customerResults = await Promise.all(customerPromises);
+      customerResults.forEach(customer => {
+        customerNamesMap[customer.id] = customer.name;
+      });
+    }
+    
+    // Add customer names to feedback
+    feedback.forEach(fb => {
+      fb.customerName = customerNamesMap[fb.customerId] || 'Customer';
+    });
+    
+    // Sort feedback by createdAt descending (newest first)
+    feedback.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateB - dateA;
+    });
+    
+    // Get complaints against this technician
+    const complaintsSnapshot = await db.collection('complaints')
+      .where('technician.userId', '==', id)
+      .get();
+    
+    const complaints = [];
+    complaintsSnapshot.forEach(doc => {
+      const data = doc.data();
+      complaints.push({
+        id: doc.id,
+        customer: data.customer,
+        complaint: data.complaint,
+        service: data.service,
+        createdAt: data.complaint.submittedAt
+      });
+    });
+    
+    // Sort complaints by submittedAt descending (newest first)
+    complaints.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateB - dateA;
+    });
+    
+    // Calculate average rating
+    const averageRating = ratingCount > 0 ? Math.round((totalRating / ratingCount) * 10) / 10 : 0;
+    
+    // Determine badge type if not set
+    let badgeType = technicianData.badgeType || technicianData.verificationType;
+    if (!badgeType) {
+      if (technicianData.verificationDocuments && technicianData.verificationDocuments.certificates && technicianData.verificationDocuments.certificates.length > 0) {
+        badgeType = 'professional';
+      } else if (technicianData.experience && technicianData.experience > 2) {
+        badgeType = 'experience';
+      } else {
+        badgeType = 'probation';
+      }
+    }
+    
+    const response = {
+      technician: {
+        ...technicianData,
+        badgeType,
+        rating: averageRating,
+        reviewCount: ratingCount,
+        complaintCount: complaints.length,
+        totalJobs: technicianData.totalJobs || 0,
+        completedJobs: technicianData.completedJobs || 0,
+        cancelledJobs: technicianData.cancelledJobs || 0
+      },
+      feedback,
+      complaints
+    };
+    
+    res.json({
+      success: true,
+      data: response
+    });
+    
+  } catch (err) {
+    console.error('Get technician details error:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch technician details',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Promote technician from probation
+const promoteTechnician = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { badgeType = 'experience' } = req.body;
+    
+    const technicianRef = technicianCollection.doc(id);
+    const doc = await technicianRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found'
+      });
+    }
+    
+    const technicianData = doc.data();
+    
+    // Check if technician is currently on probation
+    if (technicianData.status !== 'probation' && technicianData.badgeType !== 'probation') {
+      return res.status(400).json({
+        success: false,
+        error: 'Technician is not on probation'
+      });
+    }
+    
+    const updateData = {
+      status: 'approved',
+      badgeType: badgeType,
+      updatedAt: new Date()
+    };
+    
+    await technicianRef.update(updateData);
+    
+    // Create notification for technician
+    await createTechnicianNotification(id, 'promoted', `You have been promoted to ${badgeType} status`, badgeType);
+    
+    res.json({
+      success: true,
+      message: 'Technician promoted successfully',
+      data: {
+        id,
+        status: updateData.status,
+        badgeType: updateData.badgeType,
+        updatedAt: updateData.updatedAt
+      }
+    });
+    
+  } catch (err) {
+    console.error('Promote technician error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to promote technician'
     });
   }
 };
@@ -794,6 +1309,8 @@ module.exports = {
   getDashboardStats,
   updateTechnicianStatus,
   getTechnicians,
+  getTechnicianDetails,
+  promoteTechnician,
   getDocument,
   verifyDocument,
   addReviewNotes
